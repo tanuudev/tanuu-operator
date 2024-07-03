@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
-	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -28,6 +28,8 @@ import (
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
+
+const finalizerName = "tanuu.dev/finalizer"
 
 // DevenvReconciler reconciles a Devenv object
 type DevenvReconciler struct {
@@ -53,13 +55,51 @@ type DevenvReconciler struct {
 func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 	devenv := &tanuudevv1alpha1.Devenv{}
+	err := r.Get(ctx, req.NamespacedName, devenv)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Object not found, return.  Created objects are automatically garbage collected.
+			// For additional cleanup logic use finalizers.
+			return ctrl.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return ctrl.Result{}, err
+	}
+	if devenv.ObjectMeta.DeletionTimestamp.IsZero() {
+		// Resource is not being deleted
+		if !containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
+			devenv.ObjectMeta.Finalizers = append(devenv.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(ctx, devenv); err != nil {
+				l.Error(err, "unable to update Devenv with finalizer")
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// Resource is being deleted
+		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
+			// Run finalization logic for finalizerName. If the
+			// finalization logic fails, don't remove the finalizer so
+			// that we can retry during the next reconciliation.
+			if err := r.deleteDevCluster(ctx, devenv); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			// Remove finalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			devenv.ObjectMeta.Finalizers = removeString(devenv.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(ctx, devenv); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
 	if err := r.Get(ctx, req.NamespacedName, devenv); err != nil {
 		r.Recorder.Event(devenv, "Warning", "FetchFailed", "Failed to fetch Devenv object, likely deleted.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	r.Recorder.Event(devenv, "Normal", "Starting", "Devenv object started reconciliation.")
 
-	time.Sleep(time.Second * 45)
+	createDevCluster(ctx, r.Client, l, req)
+
 	devenv.Status.IpAddress = "127.0.0.1:8080"
 	devenv.Status.CloudProvider = devenv.Spec.CloudProvider
 	devenv.Status.ControlPLane = []string{"123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174001"}
@@ -80,3 +120,12 @@ func (r *DevenvReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&tanuudevv1alpha1.Devenv{}).
 		Complete(r)
 }
+
+// func (r *DevenvReconciler) doCleanup(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) error {
+// 	// Implement your clean-up logic here
+// 	// For example, deleting associated resources or releasing external resources
+// 	l := log.FromContext(ctx)
+// 	deleteDevCluster(ctx, r.Client, l, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(devenv)})
+// 	// If clean-up is successful, return nil
+// 	return nil
+// }

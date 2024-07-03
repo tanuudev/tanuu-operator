@@ -66,6 +66,8 @@ spec:
                 type: array
               ipAddress:
                 type: string
+              status:
+                type: string
               workers:
                 items:
                   type: string

@@ -43,6 +43,7 @@ type DevenvStatus struct {
 	Gpus          []string `json:"gpus,omitempty"`
 	IpAddress     string   `json:"ipAddress,omitempty"`
 	CloudProvider string   `json:"cloudProvider,omitempty"`
+	Status        string   `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
