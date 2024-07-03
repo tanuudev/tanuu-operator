@@ -17,4 +17,8 @@ resources:
   kind: Devenv
   path: github.com/tanuudev/tanuu-operator/api/v1alpha1
   version: v1alpha1
+- domain: tanuu.dev
+  group: tanuu.dev
+  kind: NodeGroupClaim
+  version: v1alpha1
 version: "3"
