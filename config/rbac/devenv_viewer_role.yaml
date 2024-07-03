@@ -1,32 +1,23 @@
----
+# permissions for end users to view devenvs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: tanuu-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: devenv-viewer-role
 rules:
 - apiGroups:
   - tanuu.dev.envs
   resources:
   - devenvs
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - tanuu.dev.envs
-  resources:
-  - devenvs/finalizers
-  verbs:
-  - update
 - apiGroups:
   - tanuu.dev.envs
   resources:
   - devenvs/status
   verbs:
   - get
-  - patch
-  - update
