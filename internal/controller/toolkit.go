@@ -150,19 +150,7 @@ type DevenvStatusUpdate struct {
 	Status        string
 }
 
-// updateDevenvStatus updates the status of a Devenv object with the provided status information.
-func (r *DevenvReconciler) updateDevenvStatus(ctx context.Context, devenv *tanuudevv1alpha1.Devenv, update DevenvStatusUpdate) error {
-	// Update each field in the DevenvStatus from the update struct
-	devenv.Status.ControlPlane = update.ControlPlane
-	devenv.Status.Workers = update.Workers
-	devenv.Status.Gpus = update.Gpus
-	devenv.Status.IpAddress = update.IpAddress
-	devenv.Status.CloudProvider = update.CloudProvider
-	devenv.Status.Status = update.Status
-
-	// Update the Devenv object in the Kubernetes API
-	return r.Status().Update(ctx, devenv)
-}
+// updateDevenvStatusWithRetry updates the status of a Devenv object with retry logic.
 func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, devenv *tanuudevv1alpha1.Devenv, update DevenvStatusUpdate) error {
 	logger := log.FromContext(ctx)
 	retryAttempts := 3
@@ -170,7 +158,7 @@ func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, deve
 		latestDevenv, err := r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
 		if err != nil {
 			logger.Error(err, "Failed to fetch the latest version of Devenv for update", "Devenv", devenv.Name)
-			return err // Handle error appropriately
+			return err
 		}
 
 		// Apply the updates to the latest version of the Devenv object
@@ -202,9 +190,4 @@ func (r *DevenvReconciler) getDevenvByNameAndNamespace(ctx context.Context, name
 		return nil, err
 	}
 	return devenv, nil
-}
-
-// isPreconditionFailedError checks if the error is due to a precondition failed.
-func isPreconditionFailedError(err error) bool {
-	return errors.IsConflict(err)
 }

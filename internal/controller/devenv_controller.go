@@ -60,14 +60,13 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
-			// For additional cleanup logic use finalizers.
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
 	if devenv.Status.Status != "Ready" {
-		// Mark as created but not ready if it's a new object
+		// Mark as pending but not ready if it's a new object
 		update := DevenvStatusUpdate{}
 		if devenv.Status.Status == "" {
 			update.Status = "Pending"
@@ -115,9 +114,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		// Resource is being deleted
 		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
-			// Run finalization logic for finalizerName. If the
-			// finalization logic fails, don't remove the finalizer so
-			// that we can retry during the next reconciliation.
+			// Run finalization logic for finalizerName.
 			if err := r.deleteDevCluster(ctx, devenv); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -137,19 +134,8 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	createDevCluster(ctx, r.Client, l, req)
 
-	// update := DevenvStatusUpdate{}
-	// update.IpAddress = "127.0.0.1:8080"
-	// update.CloudProvider = devenv.Spec.CloudProvider
-	// update.ControlPlane = []string{"123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174001"}
-	// update.Workers = []string{"123e4567-e89b-12d3-a456-426614174002", "123e4567-e89b-12d3-a456-426614174003"}
-	// update.Gpus = []string{"123e4567-e89b-12d3-a456-426614174004", "123e4567-e89b-12d3-a456-426614174005"}
-	// r.updateDevenvStatusWithRetry(ctx, devenv, update)
-	// if err := r.Status().Update(ctx, devenv); err != nil {
-	// 	l.Error(err, "unable to update Devenv status")
-	// 	return ctrl.Result{}, err
-	// }
 	l.Info("Reconciled Devenv")
-	r.Recorder.Event(devenv, "Normal", "Reconciled", "Devenv object reconciled successfully")
+	r.Recorder.Event(devenv, "Normal", "Reconciled", "Devenv reconciled successfully")
 	return ctrl.Result{}, nil
 }
 
@@ -159,12 +145,3 @@ func (r *DevenvReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&tanuudevv1alpha1.Devenv{}).
 		Complete(r)
 }
-
-// func (r *DevenvReconciler) doCleanup(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) error {
-// 	// Implement your clean-up logic here
-// 	// For example, deleting associated resources or releasing external resources
-// 	l := log.FromContext(ctx)
-// 	deleteDevCluster(ctx, r.Client, l, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(devenv)})
-// 	// If clean-up is successful, return nil
-// 	return nil
-// }
