@@ -51,13 +51,13 @@ func removeString(slice []string, s string) []string {
 	return result
 }
 
-func createDevCluster(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request) {
+func createDevCluster(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) {
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "tanuu.dev/v1alpha1",
 			"kind":       "NodeGroupClaim",
 			"metadata": map[string]interface{}{
-				"name":      "andy-test-worker-group",
+				"name":      devenv.Spec.Name + "-worker-group",
 				"namespace": req.Namespace,
 			},
 			"spec": map[string]interface{}{
@@ -114,7 +114,7 @@ func (r *DevenvReconciler) deleteDevCluster(ctx context.Context, devenv *tanuude
 			"apiVersion": "tanuu.dev/v1alpha1",
 			"kind":       "NodeGroupClaim",
 			"metadata": map[string]interface{}{
-				"name":      "andy-test-worker-group",
+				"name":      devenv.Spec.Name + "-worker-group",
 				"namespace": req.Namespace,
 			},
 		},

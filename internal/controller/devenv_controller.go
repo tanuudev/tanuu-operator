@@ -132,7 +132,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	createDevCluster(ctx, r.Client, l, req)
+	createDevCluster(ctx, r.Client, l, req, devenv)
 
 	l.Info("Reconciled Devenv")
 	r.Recorder.Event(devenv, "Normal", "Reconciled", "Devenv reconciled successfully")
