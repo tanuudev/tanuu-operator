@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -65,11 +66,48 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
+	if devenv.Status.Status != "Ready" {
+		// Mark as created but not ready if it's a new object
+		update := DevenvStatusUpdate{}
+		if devenv.Status.Status == "" {
+			update.Status = "Pending"
+			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv started.")
+			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
+				l.Error(err, "Failed to update Devenv status")
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Check if the Devenv is ready to be marked as Ready
+		isReady, err := r.checkDevenvReadiness(ctx, devenv)
+		if err != nil {
+			l.Error(err, "Failed to check Devenv readiness")
+			return ctrl.Result{}, err
+		}
+
+		if isReady {
+			update.Status = "Ready"
+			r.Recorder.Event(devenv, "Normal", "Ready", "Devenv ready.")
+			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
+				l.Error(err, "Failed to update Devenv status to Ready")
+				return ctrl.Result{}, err
+			}
+		} else {
+			// Requeue the request to check the readiness again after a delay
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+		}
+	}
 	if devenv.ObjectMeta.DeletionTimestamp.IsZero() {
 		// Resource is not being deleted
 		if !containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
 			devenv.ObjectMeta.Finalizers = append(devenv.ObjectMeta.Finalizers, finalizerName)
-			if err := r.Update(ctx, devenv); err != nil {
+			latestDevenv, err := r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
+			if err != nil {
+				l.Error(err, "unable to get Devenv by name and namespace")
+				return ctrl.Result{}, err
+			}
+			if err = r.Status().Update(ctx, latestDevenv); err != nil {
+				// if err := r.Update(ctx, devenv); err != nil {
 				l.Error(err, "unable to update Devenv with finalizer")
 				return ctrl.Result{}, err
 			}
@@ -96,19 +134,20 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.Recorder.Event(devenv, "Warning", "FetchFailed", "Failed to fetch Devenv object, likely deleted.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	r.Recorder.Event(devenv, "Normal", "Starting", "Devenv object started reconciliation.")
 
 	createDevCluster(ctx, r.Client, l, req)
 
-	devenv.Status.IpAddress = "127.0.0.1:8080"
-	devenv.Status.CloudProvider = devenv.Spec.CloudProvider
-	devenv.Status.ControlPLane = []string{"123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174001"}
-	devenv.Status.Workers = []string{"123e4567-e89b-12d3-a456-426614174002", "123e4567-e89b-12d3-a456-426614174003"}
-	devenv.Status.Gpus = []string{"123e4567-e89b-12d3-a456-426614174004", "123e4567-e89b-12d3-a456-426614174005"}
-	if err := r.Status().Update(ctx, devenv); err != nil {
-		l.Error(err, "unable to update Devenv status")
-		return ctrl.Result{}, err
-	}
+	// update := DevenvStatusUpdate{}
+	// update.IpAddress = "127.0.0.1:8080"
+	// update.CloudProvider = devenv.Spec.CloudProvider
+	// update.ControlPlane = []string{"123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174001"}
+	// update.Workers = []string{"123e4567-e89b-12d3-a456-426614174002", "123e4567-e89b-12d3-a456-426614174003"}
+	// update.Gpus = []string{"123e4567-e89b-12d3-a456-426614174004", "123e4567-e89b-12d3-a456-426614174005"}
+	// r.updateDevenvStatusWithRetry(ctx, devenv, update)
+	// if err := r.Status().Update(ctx, devenv); err != nil {
+	// 	l.Error(err, "unable to update Devenv status")
+	// 	return ctrl.Result{}, err
+	// }
 	l.Info("Reconciled Devenv")
 	r.Recorder.Event(devenv, "Normal", "Reconciled", "Devenv object reconciled successfully")
 	return ctrl.Result{}, nil

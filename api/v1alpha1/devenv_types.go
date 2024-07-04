@@ -38,7 +38,7 @@ type DevenvSpec struct {
 type DevenvStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ControlPLane  []string `json:"controlPlane,omitempty"`
+	ControlPlane  []string `json:"controlPlane,omitempty"`
 	Workers       []string `json:"workers,omitempty"`
 	Gpus          []string `json:"gpus,omitempty"`
 	IpAddress     string   `json:"ipAddress,omitempty"`
