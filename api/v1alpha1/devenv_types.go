@@ -23,15 +23,24 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type DevenvSize string
+
+const (
+	SizeSmall  DevenvSize = "small"
+	SizeMedium DevenvSize = "medium"
+	SizeLarge  DevenvSize = "large"
+)
+
 // DevenvSpec defines the desired state of Devenv
 type DevenvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
-	Name          string `json:"name,omitempty"`
-	CloudProvider string `json:"cloudProvider,omitempty"`
-	Gpu           bool   `json:"gpu,omitempty"`
+	Name          string     `json:"name,omitempty"`
+	CloudProvider string     `json:"cloudProvider,omitempty"`
+	Gpu           bool       `json:"gpu,omitempty"`
+	Size          DevenvSize `json:"size,omitempty"`
 }
 
 // DevenvStatus defines the observed state of Devenv
