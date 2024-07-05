@@ -47,7 +47,6 @@ type DevenvReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
 // the Devenv object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
@@ -66,6 +65,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
+	// TODO this check needs to be done AFTER the deletion check
 	if devenv.Status.Status != "Ready" {
 		// Mark as pending but not ready if it's a new object
 		update := DevenvStatusUpdate{}
@@ -132,7 +132,8 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.Recorder.Event(devenv, "Warning", "FetchFailed", "Failed to fetch Devenv object, likely deleted.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
+	// TODO we don't get here if not ready... why not? These need to move to proper places
+	r.test_omni(ctx, r.Client, l, req, devenv)
 	createDevCluster(ctx, r.Client, l, req, devenv)
 
 	l.Info("Reconciled Devenv")

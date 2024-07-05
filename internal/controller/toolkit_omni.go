@@ -18,18 +18,31 @@ package controller
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/cosi-project/runtime/pkg/safe"
+	"github.com/go-logr/logr"
 	"github.com/siderolabs/omni/client/pkg/client"
 	"github.com/siderolabs/omni/client/pkg/omni/resources"
 	"github.com/siderolabs/omni/client/pkg/omni/resources/omni"
 	"github.com/siderolabs/omni/client/pkg/version"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	k8client "sigs.k8s.io/controller-runtime/pkg/client"
+
+	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
 
-func test_omni(ctx context.Context) {
-	l := log.FromContext(ctx)
+func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) {
+	secret := &corev1.Secret{}
+	// TODO make the namespace and name variables
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return
+	}
 	// This example shows how to use Omni client to access resources.
 
 	// Setup versions information. You can embed that into `go build` too.
@@ -49,7 +62,10 @@ func test_omni(ctx context.Context) {
 	//
 	// Note: Store the service account key securely, it will not be displayed again
 	// Creating a new client.
-	client, err := client.New("insert_url_here_from_secret", client.WithServiceAccount("insert_token_here_from_secret")) // From the generated service account.
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
 
 	if err != nil {
 		l.Error(err, "failed to create omni client %s", err)
@@ -72,8 +88,8 @@ func test_omni(ctx context.Context) {
 
 	for iter := safe.IteratorFromList(machines); iter.Next(); {
 		item := iter.Value()
-
-		l.Info("machine %s, connected: %t", item.TypedSpec().Value.Network.Hostname, item.TypedSpec().Value.GetConnected())
+		connectedStr := strconv.FormatBool(item.TypedSpec().Value.GetConnected())
+		l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", connected: " + connectedStr)
 
 		// Check cluster assignment for a machine.
 		// Find a machine which is allocated into a cluster for the later use.
@@ -99,11 +115,11 @@ func test_omni(ctx context.Context) {
 
 	for _, message := range cpuInfo.Messages {
 		for i, info := range message.CpuInfo {
-			l.Info("machine %s, CPU %d family %s", machine.Metadata(), i, info.CpuFamily)
+			l.Info("machine " + machine.TypedSpec().Value.Network.Hostname + ", CPU " + strconv.Itoa(i) + " info:" + info.CpuFamily)
 		}
 
 		if len(message.CpuInfo) == 0 {
-			l.Info("no CPU info for machine %s", machine.Metadata())
+			l.Info("no CPU info for machine " + machine.TypedSpec().Value.Network.Hostname)
 		}
 	}
 
