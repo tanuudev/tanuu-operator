@@ -18,10 +18,14 @@ package controller
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -29,34 +33,65 @@ import (
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
 
-func createDevCluster(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) {
+func parseConfigString(config string) map[string]interface{} {
+	lines := strings.Split(config, "\n")
+	result := make(map[string]interface{})
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			valueStr := strings.TrimSpace(parts[1])
+			// Attempt to parse the value as an integer
+			if intValue, err := strconv.Atoi(valueStr); err == nil {
+				// If successful, use the integer value
+				result[key] = intValue
+			} else {
+				// Otherwise, use the string value
+				result[key] = valueStr
+			}
+		}
+	}
+	return result
+}
+
+func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodetype string) {
+	// Define the ConfigMap object
+	configMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	namespacedName := types.NamespacedName{
+		Namespace: "default",
+		Name:      "workers",
+	}
+	// Get the ConfigMap
+	if err := client.Get(ctx, namespacedName, configMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return
+	}
+
+	// Extract the configuration string
+	configString, exists := configMap.Data[nodetype]
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "tanuu.dev/v1alpha1",
 			"kind":       "NodeGroupClaim",
 			"metadata": map[string]interface{}{
-				"name":      devenv.Spec.Name + "-worker-group",
+				"name":      devenv.Spec.Name + "-" + nodetype + "-group",
 				"namespace": req.Namespace,
 			},
 			"spec": map[string]interface{}{
 				"compositionSelector": map[string]interface{}{
 					"matchLabels": map[string]interface{}{
-						// TODO make these variables
-						"provider": "google",
-						"cluster":  "gke",
-					},
+						"provider": devenv.Spec.CloudProvider,
+						"cluster":  "gke"},
 				},
-				"id": devenv.Spec.Name + "-worker-group",
-				"parameters": map[string]interface{}{
-					// TODO read this from configmap named in a vairaible
-					"replicas":            2,
-					"size":                50,
-					"image":               "projects/silogen-sandbox/global/images/omni-worker-v5",
-					"imageType":           "projects/silogen-sandbox/zones/europe-west4-a/diskTypes/pd-balanced",
-					"machineType":         "e2-highmem-4",
-					"serviceAccountEmail": "1067721308413-compute@developer.gserviceaccount.com",
-					"zone":                "europe-west4-a",
-				},
+				"id":         devenv.Spec.Name + "-" + nodetype + "-group",
+				"parameters": parseConfigString(configString),
 			},
 		},
 	}
@@ -68,22 +103,11 @@ func createDevCluster(ctx context.Context, client client.Client, l logr.Logger, 
 			l.Error(err, "unable to create custom resource")
 		}
 	} else {
-		// update := DevenvStatusUpdate{}
-		// update.IpAddress = "127.0.0.1:8080"
-		// update.CloudProvider = devenv.Spec.CloudProvider
-		// update.ControlPlane = []string{"123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174001"}
-		// update.Workers = []string{"123e4567-e89b-12d3-a456-426614174002", "123e4567-e89b-12d3-a456-426614174003"}
-		// update.Gpus = []string{"123e4567-e89b-12d3-a456-426614174004", "123e4567-e89b-12d3-a456-426614174005"}
-		// r.updateDevenvStatusWithRetry(ctx, devenv, update)
-		// if err := r.Status().Update(ctx, devenv); err != nil {
-		// 	l.Error(err, "unable to update Devenv status")
-		// 	return ctrl.Result{}, err
-		// }
 		l.Info("custom resource created successfully")
 	}
 }
 
-func (r *DevenvReconciler) deleteDevCluster(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) error {
+func (r *DevenvReconciler) deleteDevClusterNodes(ctx context.Context, devenv *tanuudevv1alpha1.Devenv, nodetype string) error {
 	l := log.FromContext(ctx)
 	c := r.Client
 	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(devenv)}
@@ -94,7 +118,7 @@ func (r *DevenvReconciler) deleteDevCluster(ctx context.Context, devenv *tanuude
 			"apiVersion": "tanuu.dev/v1alpha1",
 			"kind":       "NodeGroupClaim",
 			"metadata": map[string]interface{}{
-				"name":      devenv.Spec.Name + "-worker-group",
+				"name":      devenv.Spec.Name + "-" + nodetype + "-group",
 				"namespace": req.Namespace,
 			},
 		},
