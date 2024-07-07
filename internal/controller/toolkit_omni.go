@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// NOTE: Taken from https://pkg.go.dev/github.com/siderolabs/omni-client/pkg/client#example-package
+
 package controller
 
 import (
@@ -43,25 +45,10 @@ func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Cl
 		l.Error(err, "unable to fetch creds from secret")
 		return
 	}
-	// This example shows how to use Omni client to access resources.
-
-	// Setup versions information. You can embed that into `go build` too.
 	version.Name = "omni"
 	version.SHA = "build SHA"
 	version.Tag = "v0.9.1"
 
-	// For this example we will use Omni service account.
-	// You can create your service account in advance:
-	//
-	// omnictl serviceaccount create example.account
-	// Created service account "example.account" with public key ID "<REDACTED>"
-	//
-	// Set the following environment variables to use the service account:
-	// OMNI_ENDPOINT=https://<account>.omni.siderolabs.io:443
-	// OMNI_SERVICE_ACCOUNT_KEY=base64encodedkey
-	//
-	// Note: Store the service account key securely, it will not be displayed again
-	// Creating a new client.
 	url := string(secret.Data["url"])
 	token := string(secret.Data["token"])
 
@@ -71,11 +58,8 @@ func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Cl
 		l.Error(err, "failed to create omni client %s", err)
 	}
 
-	// Omni service is using COSI https://github.com/cosi-project/runtime/.
-	// The same client is used to get resources in Talos.
 	st := client.Omni().State()
 
-	// Getting the resources from the Omni state.
 	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
 		l.Error(err, "failed to get machines %s", err)

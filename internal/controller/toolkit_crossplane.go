@@ -41,12 +41,14 @@ func createDevCluster(ctx context.Context, client client.Client, l logr.Logger, 
 			"spec": map[string]interface{}{
 				"compositionSelector": map[string]interface{}{
 					"matchLabels": map[string]interface{}{
+						// TODO make these variables
 						"provider": "google",
 						"cluster":  "gke",
 					},
 				},
-				"id": "andy-test-worker-group",
+				"id": devenv.Spec.Name + "-worker-group",
 				"parameters": map[string]interface{}{
+					// TODO read this from configmap named in a vairaible
 					"replicas":            2,
 					"size":                50,
 					"image":               "projects/silogen-sandbox/global/images/omni-worker-v5",
