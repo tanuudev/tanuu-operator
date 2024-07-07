@@ -20,7 +20,7 @@ package controller
 
 import (
 	"context"
-	"strconv"
+	"strings"
 
 	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/go-logr/logr"
@@ -28,7 +28,6 @@ import (
 	"github.com/siderolabs/omni/client/pkg/omni/resources"
 	"github.com/siderolabs/omni/client/pkg/omni/resources/omni"
 	"github.com/siderolabs/omni/client/pkg/version"
-	"google.golang.org/protobuf/types/known/emptypb"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,7 +38,7 @@ import (
 
 func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) {
 	secret := &corev1.Secret{}
-	// TODO make the namespace and name variables
+	// TODO make the secret namespace and name variables
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
@@ -65,51 +64,12 @@ func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Cl
 		l.Error(err, "failed to get machines %s", err)
 	}
 
-	var (
-		cluster string
-		machine *omni.MachineStatus
-	)
-
 	for iter := safe.IteratorFromList(machines); iter.Next(); {
 		item := iter.Value()
-		connectedStr := strconv.FormatBool(item.TypedSpec().Value.GetConnected())
-		l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", connected: " + connectedStr)
-
-		// Check cluster assignment for a machine.
-		// Find a machine which is allocated into a cluster for the later use.
-		if c, ok := item.Metadata().Labels().Get(omni.LabelCluster); ok && machine == nil {
-			cluster = c
-			machine = item
-		}
-	}
-
-	// No machines found, exit.
-	if machine == nil {
-
-		return
-	}
-	cpuInfo, err := client.Talos().WithCluster(
-		cluster,
-	).WithNodes(
-		machine.Metadata().ID(), // You can use machine UUID as Omni will properly resolve it into machine IP.
-	).CPUInfo(ctx, &emptypb.Empty{})
-	if err != nil {
-		l.Error(err, "failed to read machine CPU info %s", err)
-	}
-
-	for _, message := range cpuInfo.Messages {
-		for i, info := range message.CpuInfo {
-			l.Info("machine " + machine.TypedSpec().Value.Network.Hostname + ", CPU " + strconv.Itoa(i) + " info:" + info.CpuFamily)
+		if strings.Contains(item.ResourceDefinition().DefaultNamespace, devenv.Spec.Name) {
+			l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", found: ")
 		}
 
-		if len(message.CpuInfo) == 0 {
-			l.Info("no CPU info for machine " + machine.TypedSpec().Value.Network.Hostname)
-		}
 	}
 
-	// Talking to Omni specific APIs: getting talosconfig.
-	_, err = client.Management().Talosconfig(ctx)
-	if err != nil {
-		l.Error(err, "failed to get talosconfig %s", err)
-	}
 }

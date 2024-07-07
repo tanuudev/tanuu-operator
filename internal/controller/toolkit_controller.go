@@ -50,7 +50,15 @@ func removeString(slice []string, s string) []string {
 func (r *DevenvReconciler) checkDevenvReadiness(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	// Example readiness check logic
 	// This should be replaced with actual checks relevant to your Devenv object
-	return true, nil
+	// TODO check the nodes are running, and cluster is available
+	return false, nil
+}
+
+func (r *DevenvReconciler) checkDevenvNodesReadiness(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
+	// Example readiness check logic
+	// This should be replaced with actual checks relevant to your Devenv object
+	// TODO check the nodes are running, and cluster is available
+	return false, nil
 }
 
 // DevenvStatusUpdate represents the status information you want to update for a Devenv object.
