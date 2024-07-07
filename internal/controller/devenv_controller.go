@@ -65,12 +65,58 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
-	// TODO this check needs to be done AFTER the deletion check
+	if devenv.ObjectMeta.DeletionTimestamp == nil || devenv.ObjectMeta.DeletionTimestamp.IsZero() {
+		// Resource is not being deleted
+		if !containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
+			latestDevenv, err := r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
+			latestDevenv.ObjectMeta.Finalizers = append(devenv.ObjectMeta.Finalizers, finalizerName)
+
+			if err != nil {
+				l.Error(err, "unable to get Devenv by name and namespace")
+				return ctrl.Result{}, err
+			}
+			// if err = r.Status().Update(ctx, latestDevenv); err != nil {
+			if err = r.Update(ctx, latestDevenv); err != nil {
+				// if err := r.Update(ctx, devenv); err != nil {
+				l.Error(err, "unable to update Devenv with finalizer")
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// Resource is being deleted
+		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
+			// Run finalization logic for finalizerName.
+			if err := r.deleteDevClusterNodes(ctx, devenv, "worker"); err != nil {
+				return ctrl.Result{}, err
+			}
+			if err := r.deleteDevClusterNodes(ctx, devenv, "control"); err != nil {
+				return ctrl.Result{}, err
+			}
+			if devenv.Spec.Gpu {
+				if err := r.deleteDevClusterNodes(ctx, devenv, "gpu"); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
+
+			// Remove finalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			devenv.ObjectMeta.Finalizers = removeString(devenv.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(ctx, devenv); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
 	if devenv.Status.Status != "Ready" {
 		// Mark as pending but not ready if it's a new object
 		update := DevenvStatusUpdate{}
 		if devenv.Status.Status == "" {
 			update.Status = "Pending"
+			createDevClusterNodes(ctx, r.Client, l, req, devenv, "control")
+			createDevClusterNodes(ctx, r.Client, l, req, devenv, "worker")
+			if devenv.Spec.Gpu {
+				createDevClusterNodes(ctx, r.Client, l, req, devenv, "gpu")
+			}
+
 			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv started.")
 			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 				l.Error(err, "Failed to update Devenv status")
@@ -86,6 +132,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		if isReady {
+			// TODO Add the connection information to the Devenv object
 			update.Status = "Ready"
 			r.Recorder.Event(devenv, "Normal", "Ready", "Devenv ready.")
 			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
@@ -93,48 +140,27 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 		} else {
-			// Requeue the request to check the readiness again after a delay
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-		}
-	}
-	if devenv.ObjectMeta.DeletionTimestamp.IsZero() {
-		// Resource is not being deleted
-		if !containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
-			devenv.ObjectMeta.Finalizers = append(devenv.ObjectMeta.Finalizers, finalizerName)
-			latestDevenv, err := r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
+			isNodeReady, err := r.checkDevenvNodesReadiness(ctx, devenv)
 			if err != nil {
-				l.Error(err, "unable to get Devenv by name and namespace")
+				l.Error(err, "Failed to check Devenv node readiness")
 				return ctrl.Result{}, err
 			}
-			if err = r.Status().Update(ctx, latestDevenv); err != nil {
-				// if err := r.Update(ctx, devenv); err != nil {
-				l.Error(err, "unable to update Devenv with finalizer")
-				return ctrl.Result{}, err
-			}
-		}
-	} else {
-		// Resource is being deleted
-		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
-			// Run finalization logic for finalizerName.
-			if err := r.deleteDevCluster(ctx, devenv); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			// Remove finalizer. Once all finalizers have been
-			// removed, the object will be deleted.
-			devenv.ObjectMeta.Finalizers = removeString(devenv.ObjectMeta.Finalizers, finalizerName)
-			if err := r.Update(ctx, devenv); err != nil {
-				return ctrl.Result{}, err
+			if !isNodeReady {
+				// r.test_omni(ctx, r.Client, l, req, devenv)
+				// TODO get nodes ID's and update the Devenv object
+				// TODO create the cluster
+				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			} else {
+				// Requeue the request to check the readiness again after a delay
+				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 			}
 		}
 	}
+
 	if err := r.Get(ctx, req.NamespacedName, devenv); err != nil {
 		r.Recorder.Event(devenv, "Warning", "FetchFailed", "Failed to fetch Devenv object, likely deleted.")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	// TODO we don't get here if not ready... why not? These need to move to proper places
-	r.test_omni(ctx, r.Client, l, req, devenv)
-	createDevCluster(ctx, r.Client, l, req, devenv)
 
 	l.Info("Reconciled Devenv")
 	r.Recorder.Event(devenv, "Normal", "Reconciled", "Devenv reconciled successfully")

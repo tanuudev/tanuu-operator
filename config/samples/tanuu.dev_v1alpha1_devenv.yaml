@@ -7,5 +7,5 @@ metadata:
   name: devenv-sample
 spec:
   name: "example-dev-environment"
-  cloudProvider: "gcp"
+  cloudProvider: "google"
   gpu: true
