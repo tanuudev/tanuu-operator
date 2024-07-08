@@ -36,13 +36,13 @@ import (
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
 
-func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) {
+func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
 	// TODO make the secret namespace and name variables
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
-		return
+		return err
 	}
 	version.Name = "omni"
 	version.SHA = "build SHA"
@@ -55,6 +55,7 @@ func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Cl
 
 	if err != nil {
 		l.Error(err, "failed to create omni client %s", err)
+		return err
 	}
 
 	st := client.Omni().State()
@@ -62,14 +63,48 @@ func (r *DevenvReconciler) test_omni(ctx context.Context, ctrlclient k8client.Cl
 	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
 		l.Error(err, "failed to get machines %s", err)
+		return err
 	}
-
+	update := &DevenvStatusUpdate{}
 	for iter := safe.IteratorFromList(machines); iter.Next(); {
 		item := iter.Value()
-		if strings.Contains(item.ResourceDefinition().DefaultNamespace, devenv.Spec.Name) {
+		if strings.Contains(item.TypedSpec().Value.Network.Hostname, devenv.Spec.Name) {
 			l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", found: ")
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "control") {
+				update.ControlPlane = append(update.ControlPlane, item.Metadata().ID())
+			}
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "worker") {
+				update.Workers = append(update.Workers, item.Metadata().ID())
+			}
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "gpu") {
+				update.Gpus = append(update.Gpus, item.Metadata().ID())
+			}
 		}
 
 	}
+	allConditionsMet := true
+
+	if len(update.ControlPlane) != 1 {
+		l.Info("control plane not found")
+		allConditionsMet = false
+	}
+	if len(update.Workers) != 2 {
+		l.Info("worker nodes not found")
+		allConditionsMet = false
+	}
+	if devenv.Spec.Gpu && len(update.Gpus) != 1 {
+		l.Info("gpu nodes not found")
+		allConditionsMet = false
+	}
+
+	if allConditionsMet {
+		if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
+			l.Error(err, "Failed to update Devenv status to Ready")
+			return err
+		}
+		r.Recorder.Event(devenv, "Normal", "Starting", "Nodes started.")
+	}
+
+	return nil
 
 }

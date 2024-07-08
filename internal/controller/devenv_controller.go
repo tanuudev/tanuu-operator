@@ -44,6 +44,7 @@ type DevenvReconciler struct {
 // +kubebuilder:rbac:groups=tanuu.dev.envs,resources=devenvs/finalizers,verbs=update
 // +kubebuilder:rbac:groups=tanuu.dev,resources=nodegroupclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -147,6 +148,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 			if !isNodeReady {
 				// r.test_omni(ctx, r.Client, l, req, devenv)
+				r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
 				// TODO get nodes ID's and update the Devenv object
 				// TODO create the cluster
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
