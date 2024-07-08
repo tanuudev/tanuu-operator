@@ -195,6 +195,8 @@ github.com/siderolabs/go-retry v0.3.3 h1:zKV+S1vumtO72E6sYsLlmIdV/G/GcYSBLiEx/c9
 github.com/siderolabs/go-retry v0.3.3/go.mod h1:Ff/VGc7v7un4uQg3DybgrmOWHEmJ8BzZds/XNn/BqMI=
 github.com/siderolabs/net v0.4.0 h1:1bOgVay/ijPkJz4qct98nHsiB/ysLQU0KLoBC4qLm7I=
 github.com/siderolabs/net v0.4.0/go.mod h1:/ibG+Hm9HU27agp5r9Q3eZicEfjquzNzQNux5uEk0kM=
+github.com/siderolabs/omni/client v0.38.0 h1:kIt0pDhOUiMP3jxfXLd+RW0ZDLsYYJ2S0+D0j4Y14v4=
+github.com/siderolabs/omni/client v0.38.0/go.mod h1:3U2734TQv6Ipx0n/r0ObJjIybzVCqC6J/50a+J/64tY=
 github.com/siderolabs/omni/client v0.38.3 h1:K/LHwHzXD27SeVEli3jNsbbqUtdtb4MQobjLh5y3ExQ=
 github.com/siderolabs/omni/client v0.38.3/go.mod h1:3U2734TQv6Ipx0n/r0ObJjIybzVCqC6J/50a+J/64tY=
 github.com/siderolabs/protoenc v0.2.1 h1:BqxEmeWQeMpNP3R6WrPqDatX8sM/r4t97OP8mFmg6GA=

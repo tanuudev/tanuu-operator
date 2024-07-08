@@ -21,8 +21,8 @@ package controller
 import (
 	"bytes"
 	"context"
-	"strconv"
 	"strings"
+	templ "text/template"
 
 	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/go-logr/logr"
@@ -30,7 +30,6 @@ import (
 	"github.com/siderolabs/omni/client/pkg/omni/resources"
 	"github.com/siderolabs/omni/client/pkg/omni/resources/omni"
 	"github.com/siderolabs/omni/client/pkg/template"
-	"github.com/siderolabs/omni/client/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,6 +37,19 @@ import (
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
+
+type Environment struct {
+	Name                  string
+	ControlPlane          string
+	Workers               string
+	Gpus                  string
+	TailScaleClientID     string
+	TailScaleClientSecret string
+	GitHubToken           string
+	Gpu                   bool
+}
+
+var clustertempl *templ.Template
 
 func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
@@ -47,9 +59,9 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		l.Error(err, "unable to fetch creds from secret")
 		return err
 	}
-	version.Name = "omni"
-	version.SHA = "build SHA"
-	version.Tag = "v0.9.1"
+	// version.Name = "omni"
+	// version.SHA = "build SHA"
+	// version.Tag = "v0.9.1"
 
 	url := string(secret.Data["url"])
 	token := string(secret.Data["token"])
@@ -71,16 +83,28 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 	update := &DevenvStatusUpdate{}
 	for iter := safe.IteratorFromList(machines); iter.Next(); {
 		item := iter.Value()
+		typedSpec := item.TypedSpec()
+		if typedSpec == nil {
+			return nil // or continue, depending on the context
+		}
+		typedSpecValue := typedSpec.Value
+		if typedSpecValue == nil {
+			return nil // or continue
+		}
+		network := typedSpecValue.Network
+		if network == nil {
+			return nil // or continue
+		}
 		if strings.Contains(item.TypedSpec().Value.Network.Hostname, devenv.Spec.Name) {
 			l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", found: ")
 			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "control") {
-				update.ControlPlane = append(update.ControlPlane, item.Metadata().ID())
+				update.ControlPlane = append(update.ControlPlane, "  - "+item.Metadata().ID())
 			}
 			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "worker") {
-				update.Workers = append(update.Workers, item.Metadata().ID())
+				update.Workers = append(update.Workers, "  - "+item.Metadata().ID())
 			}
 			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "gpu") {
-				update.Gpus = append(update.Gpus, item.Metadata().ID())
+				update.Gpus = append(update.Gpus, "  - "+item.Metadata().ID())
 			}
 		}
 
@@ -123,29 +147,71 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 		l.Error(err, "unable to fetch creds from secret")
 		return err
 	}
-	version.Name = "omni"
-	version.SHA = "build SHA"
-	version.Tag = "v0.9.1"
+	// Define the ConfigMap object
+	configMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	namespacedName := types.NamespacedName{
+		Namespace: "default",
+		Name:      "cluster",
+	}
+	// Get the ConfigMap
+	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return err
+	}
+
+	// Extract the configuration string
+	configString, exists := configMap.Data["cluster.tmpl"]
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
+
+	environment := Environment{}
+	var buf bytes.Buffer
+	environment.Name = devenv.Spec.Name
+	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
+	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
+	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	environment.TailScaleClientID = "null"
+	environment.TailScaleClientSecret = "null"
+	environment.GitHubToken = "null"
+	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
+	// l.Info(clustertempl.Root.String())
+	err = clustertempl.Execute(&buf, environment)
+	if err != nil {
+		l.Error(err, "Failed to execute template")
+		return err
+	}
+	// version.Name = "omni"
+	// version.SHA = "build SHA"
+	// version.Tag = "v0.9.1"
 
 	url := string(secret.Data["url"])
 	token := string(secret.Data["token"])
 
 	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
-	data := []byte{}
-	template.Load(bytes.NewReader(data))
 	if err != nil {
-		l.Error(err, "failed to create omni client %s", err)
+		l.Error(err, "failed to create omni client")
 		return err
 	}
-
 	st := client.Omni().State()
-	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
+	templ1, err := template.Load(bytes.NewReader(buf.Bytes()))
 	if err != nil {
-		l.Error(err, "failed to get machines %s", err)
+		l.Error(err, "failed to create omni client")
 		return err
 	}
+	sync1, err := templ1.Sync(ctx, st)
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return err
+	}
+	for _, r := range sync1.Create {
 
-	l.Info("Creating cluster" + strconv.Itoa(machines.Len()))
+		if err = st.Create(ctx, r); err != nil {
+			return err
+		}
+	}
+	l.Info("Creating cluster")
 	return nil
 
 }

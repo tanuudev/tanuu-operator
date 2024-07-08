@@ -144,7 +144,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		} else if devenv.Status.Status == "Starting" {
-			// TODO Create the cluster
+			r.create_omni_cluster(ctx, r.Client, l, req, devenv)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		}
 	}
