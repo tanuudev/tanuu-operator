@@ -118,7 +118,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				createDevClusterNodes(ctx, r.Client, l, req, devenv, "gpu")
 			}
 
-			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv started.")
+			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv provisioned.")
 			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 				l.Error(err, "Failed to update Devenv status")
 				return ctrl.Result{}, err
@@ -140,22 +140,12 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				l.Error(err, "Failed to update Devenv status to Ready")
 				return ctrl.Result{}, err
 			}
-		} else {
-			isNodeReady, err := r.checkDevenvNodesReadiness(ctx, devenv)
-			if err != nil {
-				l.Error(err, "Failed to check Devenv node readiness")
-				return ctrl.Result{}, err
-			}
-			if !isNodeReady {
-				// r.test_omni(ctx, r.Client, l, req, devenv)
-				r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
-				// TODO get nodes ID's and update the Devenv object
-				// TODO create the cluster
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-			} else {
-				// Requeue the request to check the readiness again after a delay
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-			}
+		} else if devenv.Status.Status == "Pending" {
+			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+		} else if devenv.Status.Status == "Starting" {
+			// TODO Create the cluster
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		}
 	}
 

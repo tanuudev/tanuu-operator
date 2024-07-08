@@ -19,7 +19,9 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/cosi-project/runtime/pkg/safe"
@@ -27,6 +29,7 @@ import (
 	"github.com/siderolabs/omni/client/pkg/client"
 	"github.com/siderolabs/omni/client/pkg/omni/resources"
 	"github.com/siderolabs/omni/client/pkg/omni/resources/omni"
+	"github.com/siderolabs/omni/client/pkg/template"
 	"github.com/siderolabs/omni/client/pkg/version"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -88,16 +91,19 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		l.Info("control plane not found")
 		allConditionsMet = false
 	}
+	// TODO make the number of worker nodes a variable
 	if len(update.Workers) != 2 {
 		l.Info("worker nodes not found")
 		allConditionsMet = false
 	}
+	// TODO make the gpu nodes optional and variable
 	if devenv.Spec.Gpu && len(update.Gpus) != 1 {
 		l.Info("gpu nodes not found")
 		allConditionsMet = false
 	}
 
 	if allConditionsMet {
+		update.Status = "Starting"
 		if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
 			l.Error(err, "Failed to update Devenv status to Ready")
 			return err
@@ -105,6 +111,41 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		r.Recorder.Event(devenv, "Normal", "Starting", "Nodes started.")
 	}
 
+	return nil
+
+}
+
+func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
+	secret := &corev1.Secret{}
+	// TODO make the secret namespace and name variables
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return err
+	}
+	version.Name = "omni"
+	version.SHA = "build SHA"
+	version.Tag = "v0.9.1"
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
+	data := []byte{}
+	template.Load(bytes.NewReader(data))
+	if err != nil {
+		l.Error(err, "failed to create omni client %s", err)
+		return err
+	}
+
+	st := client.Omni().State()
+	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "failed to get machines %s", err)
+		return err
+	}
+
+	l.Info("Creating cluster" + strconv.Itoa(machines.Len()))
 	return nil
 
 }
