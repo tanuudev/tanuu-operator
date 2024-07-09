@@ -215,3 +215,46 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 	return nil
 
 }
+
+func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
+	secret := &corev1.Secret{}
+	// TODO make the secret namespace and name variables
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return false, err
+	}
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return false, err
+	}
+	st := client.Omni().State()
+
+	clusters, err := safe.StateList[*omni.ClusterStatus](ctx, st, omni.NewClusterStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "failed to get machines %s", err)
+		return false, err
+	}
+	for iter := safe.IteratorFromList(clusters); iter.Next(); {
+		item := iter.Value()
+		typedSpec := item.TypedSpec()
+		if typedSpec == nil {
+			return false, nil // or continue, depending on the context
+		}
+		typedSpecValue := typedSpec.Value
+		if typedSpecValue == nil {
+			return false, nil // or continue
+		}
+		if typedSpecValue.Ready {
+			return true, nil
+		}
+
+	}
+	return false, nil
+
+}

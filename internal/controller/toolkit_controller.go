@@ -20,8 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	k8client "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
@@ -47,18 +50,8 @@ func removeString(slice []string, s string) []string {
 	return result
 }
 
-func (r *DevenvReconciler) checkDevenvReadiness(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
-	// Example readiness check logic
-	// This should be replaced with actual checks relevant to your Devenv object
-	// TODO check the nodes are running, and cluster is available
-	return false, nil
-}
-
-func (r *DevenvReconciler) checkDevenvNodesReadiness(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
-	// Example readiness check logic
-	// This should be replaced with actual checks relevant to your Devenv object
-	// TODO check the nodes are running, and cluster is available
-	return false, nil
+func (r *DevenvReconciler) checkDevenvReadiness(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
+	return r.check_omni_cluster(ctx, r.Client, l, req, devenv)
 }
 
 // DevenvStatusUpdate represents the status information you want to update for a Devenv object.

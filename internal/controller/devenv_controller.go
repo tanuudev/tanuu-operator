@@ -85,7 +85,9 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// Resource is being deleted
+
 		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
+			// TODO delete the cluster first!
 			// Run finalization logic for finalizerName.
 			if err := r.deleteDevClusterNodes(ctx, devenv, "worker"); err != nil {
 				return ctrl.Result{}, err
@@ -126,7 +128,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		// Check if the Devenv is ready to be marked as Ready
-		isReady, err := r.checkDevenvReadiness(ctx, devenv)
+		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
 		if err != nil {
 			l.Error(err, "Failed to check Devenv readiness")
 			return ctrl.Result{}, err
