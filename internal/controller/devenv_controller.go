@@ -130,7 +130,18 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		// Check if the Devenv is ready to be marked as Ready
-		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
+
+		isReady := false
+		clusterReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
+		if err != nil {
+			l.Error(err, "Failed to check Devenv readiness")
+			return ctrl.Result{}, err
+		}
+		if clusterReady {
+			// TODO also add a check of services up in tailscale
+			isReady = true
+		}
+
 		if err != nil {
 			l.Error(err, "Failed to check Devenv readiness")
 			return ctrl.Result{}, err
