@@ -260,3 +260,79 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 	return false, nil
 
 }
+func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
+	secret := &corev1.Secret{}
+	// TODO make the secret namespace and name variables
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return err
+	}
+	// Define the ConfigMap object
+	configMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	namespacedName := types.NamespacedName{
+		Namespace: "default",
+		Name:      "cluster",
+	}
+	// Get the ConfigMap
+	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return err
+	}
+
+	// Extract the configuration string
+	configString, exists := configMap.Data["cluster.tmpl"]
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
+
+	environment := Environment{}
+	var buf bytes.Buffer
+	environment.Name = devenv.Spec.Name
+	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
+	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
+	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	environment.TailScaleClientID = "null"
+	environment.TailScaleClientSecret = "null"
+	environment.GitHubToken = "null"
+	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
+	// l.Info(clustertempl.Root.String())
+	err = clustertempl.Execute(&buf, environment)
+	if err != nil {
+		l.Error(err, "Failed to execute template")
+		return err
+	}
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return err
+	}
+	st := client.Omni().State()
+	templ1, err := template.Load(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return err
+	}
+	syncDelete, err := templ1.Delete(ctx, st)
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return err
+	}
+	for _, r := range syncDelete.Destroy {
+		for _, item := range r {
+			if item != nil {
+				if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	l.Info("Deleting cluster")
+	return nil
+
+}

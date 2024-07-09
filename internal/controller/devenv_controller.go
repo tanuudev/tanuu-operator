@@ -87,8 +87,10 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Resource is being deleted
 
 		if containsString(devenv.ObjectMeta.Finalizers, finalizerName) {
-			// TODO delete the cluster first!
 			// Run finalization logic for finalizerName.
+			if err := r.delete_omni_cluster(ctx, r.Client, l, req, devenv); err != nil {
+				return ctrl.Result{}, err
+			}
 			if err := r.deleteDevClusterNodes(ctx, devenv, "worker"); err != nil {
 				return ctrl.Result{}, err
 			}
