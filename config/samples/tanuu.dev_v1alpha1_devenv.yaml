@@ -8,4 +8,4 @@ metadata:
 spec:
   name: "example-dev-environment"
   cloudProvider: "google"
-  gpu: true
+  gpu: false

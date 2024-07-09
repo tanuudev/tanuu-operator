@@ -62,8 +62,8 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 	configMap := &corev1.ConfigMap{}
 	// Define the namespaced name to look up the ConfigMap
 	namespacedName := types.NamespacedName{
-		Namespace: "default",
-		Name:      "workers",
+		Namespace: "tanuu-system",
+		Name:      "node-configs",
 	}
 	// Get the ConfigMap
 	if err := client.Get(ctx, namespacedName, configMap); err != nil {

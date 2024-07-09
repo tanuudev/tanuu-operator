@@ -37,7 +37,7 @@ var _ = Describe("Devenv Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
+			Namespace: "tanuu-system",
 		}
 		devenv := &tanuudevv1alpha1.Devenv{}
 
@@ -48,7 +48,7 @@ var _ = Describe("Devenv Controller", func() {
 				resource := &tanuudevv1alpha1.Devenv{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
-						Namespace: "default",
+						Namespace: "tanuu-system",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

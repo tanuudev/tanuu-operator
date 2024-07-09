@@ -53,8 +53,7 @@ var clustertempl *templ.Template
 
 func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
-	// TODO make the secret namespace and name variables
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
@@ -141,8 +140,7 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
-	// TODO make the secret namespace and name variables
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
@@ -151,7 +149,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 	configMap := &corev1.ConfigMap{}
 	// Define the namespaced name to look up the ConfigMap
 	namespacedName := types.NamespacedName{
-		Namespace: "default",
+		Namespace: "tanuu-system",
 		Name:      "cluster",
 	}
 	// Get the ConfigMap
@@ -218,8 +216,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	secret := &corev1.Secret{}
-	// TODO make the secret namespace and name variables
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return false, err
@@ -260,10 +257,11 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 	return false, nil
 
 }
+
+// TODO Delete cluster nodes also
 func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
-	// TODO make the secret namespace and name variables
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "default"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
@@ -272,7 +270,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 	configMap := &corev1.ConfigMap{}
 	// Define the namespaced name to look up the ConfigMap
 	namespacedName := types.NamespacedName{
-		Namespace: "default",
+		Namespace: "tanuu-system",
 		Name:      "cluster",
 	}
 	// Get the ConfigMap
