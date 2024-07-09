@@ -242,16 +242,18 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 	}
 	for iter := safe.IteratorFromList(clusters); iter.Next(); {
 		item := iter.Value()
-		typedSpec := item.TypedSpec()
-		if typedSpec == nil {
-			return false, nil // or continue, depending on the context
-		}
-		typedSpecValue := typedSpec.Value
-		if typedSpecValue == nil {
-			return false, nil // or continue
-		}
-		if typedSpecValue.Ready {
-			return true, nil
+		if item.Metadata().ID() == devenv.Spec.Name {
+			typedSpec := item.TypedSpec()
+			if typedSpec == nil {
+				return false, nil // or continue, depending on the context
+			}
+			typedSpecValue := typedSpec.Value
+			if typedSpecValue == nil {
+				return false, nil // or continue
+			}
+			if typedSpecValue.Ready {
+				return true, nil
+			}
 		}
 
 	}
