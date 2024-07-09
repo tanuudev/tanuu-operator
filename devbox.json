@@ -1,0 +1,15 @@
+{
+    "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.11.1/.schema/devbox.schema.json",
+    "packages": [],
+    "shell": {
+      "init_hook": [
+        "echo 'Welcome to devbox!' > /dev/null"
+      ],
+      "scripts": {
+        "test": [
+          "suffix=$(openssl rand -hex 3); sed -e \"s/name: devenv-sample/name: devenv-sample-$suffix/\" -e \"s/example-dev-environment/dev-$suffix/\" config/samples/tanuu.dev_v1alpha1_devenv.yaml | kubectl apply -f -"
+        ]
+      }
+    }
+  }
+  

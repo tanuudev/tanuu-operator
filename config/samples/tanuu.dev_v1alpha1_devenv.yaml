@@ -1,0 +1,11 @@
+apiVersion: tanuu.dev.envs/v1alpha1
+kind: Devenv
+metadata:
+  labels:
+    app.kubernetes.io/name: tanuu-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: devenv-sample
+spec:
+  name: "example-dev-environment"
+  cloudProvider: "google"
+  gpu: false

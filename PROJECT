@@ -7,4 +7,18 @@ layout:
 - go.kubebuilder.io/v4
 projectName: tanuu-operator
 repo: github.com/tanuudev/tanuu-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: tanuu.dev
+  group: envs
+  kind: Devenv
+  path: github.com/tanuudev/tanuu-operator/api/v1alpha1
+  version: v1alpha1
+- domain: tanuu.dev
+  group: tanuu.dev
+  kind: NodeGroupClaim
+  version: v1alpha1
 version: "3"
