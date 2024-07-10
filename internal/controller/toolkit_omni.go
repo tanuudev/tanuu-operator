@@ -170,6 +170,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
 	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
 	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	//TODO Read from secret
 	environment.TailScaleClientID = "null"
 	environment.TailScaleClientSecret = "null"
 	environment.GitHubToken = "null"
@@ -291,6 +292,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
 	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
 	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	// LEAVE these as null, as they are not used for deletion
 	environment.TailScaleClientID = "null"
 	environment.TailScaleClientSecret = "null"
 	environment.GitHubToken = "null"

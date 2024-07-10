@@ -131,30 +131,20 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		// Check if the Devenv is ready to be marked as Ready
 
-		isReady := false
-		clusterReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
-		if err != nil {
-			l.Error(err, "Failed to check Devenv readiness")
-			return ctrl.Result{}, err
-		}
-		if clusterReady {
-			// TODO also add a check of services up in tailscale
-			isReady = true
-		}
-
+		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
 		if err != nil {
 			l.Error(err, "Failed to check Devenv readiness")
 			return ctrl.Result{}, err
 		}
 
 		if isReady {
-			// TODO Add the connection information to the Devenv object
 			update.Status = "Ready"
 			r.Recorder.Event(devenv, "Normal", "Ready", "Devenv ready.")
 			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 				l.Error(err, "Failed to update Devenv status to Ready")
 				return ctrl.Result{}, err
 			}
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		} else if devenv.Status.Status == "Pending" {
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
@@ -162,6 +152,11 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			r.create_omni_cluster(ctx, r.Client, l, req, devenv)
 			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 		}
+	} else {
+		// Devenv is ready, check if it needs to be updated
+		// ts_hosts := r.getTailscaleHosts(ctx, devenv)
+		r.getTailscaleHosts(ctx, devenv)
+		return ctrl.Result{RequeueAfter: time.Second * 300}, nil
 	}
 
 	if err := r.Get(ctx, req.NamespacedName, devenv); err != nil {
