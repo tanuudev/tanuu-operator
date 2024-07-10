@@ -17,9 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+	"text/template"
 
 	"github.com/go-logr/logr"
 	_ "github.com/lib/pq"
@@ -64,6 +67,8 @@ type DevenvStatusUpdate struct {
 	IpAddress     string
 	CloudProvider string
 	Status        string
+	KubeConfig    string
+	Services      []string
 }
 
 // updateDevenvStatusWithRetry updates the status of a Devenv object with retry logic.
@@ -78,12 +83,30 @@ func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, deve
 		}
 
 		// Apply the updates to the latest version of the Devenv object
-		latestDevenv.Status.ControlPlane = update.ControlPlane
-		latestDevenv.Status.Workers = update.Workers
-		latestDevenv.Status.Gpus = update.Gpus
-		latestDevenv.Status.IpAddress = update.IpAddress
-		latestDevenv.Status.CloudProvider = update.CloudProvider
-		latestDevenv.Status.Status = update.Status
+		if update.ControlPlane != nil {
+			latestDevenv.Status.ControlPlane = update.ControlPlane
+		}
+		if update.Workers != nil {
+			latestDevenv.Status.Workers = update.Workers
+		}
+		if update.Gpus != nil {
+			latestDevenv.Status.Gpus = update.Gpus
+		}
+		if update.IpAddress != "" {
+			latestDevenv.Status.IpAddress = update.IpAddress
+		}
+		if update.CloudProvider != "" {
+			latestDevenv.Status.CloudProvider = update.CloudProvider
+		}
+		if update.Status != "" {
+			latestDevenv.Status.Status = update.Status
+		}
+		if update.KubeConfig != "" {
+			latestDevenv.Status.Kubeconfig = update.KubeConfig
+		}
+		if update.Services != nil {
+			latestDevenv.Status.Services = update.Services
+		}
 
 		err = r.Status().Update(ctx, latestDevenv)
 		if err != nil {
@@ -135,15 +158,58 @@ WHERE device.user is NULL;
 
 	for row := rows; row.Next(); {
 		var hostname string
-		var name string
+		var host string
 		var user sql.NullString
-		err := row.Scan(&hostname, &name, &user)
+		err := row.Scan(&hostname, &host, &user)
 		if err != nil {
 			l.Error(err, "failed to scan the row")
 		}
-		// TODO filter names matching the devenv name
-		l.Info("Tailscale device", "hostname", hostname, "name", name)
-		hosts = append(hosts, hostname)
+
+		if strings.Contains(host, devenv.Spec.Name) {
+			l.Info("Tailscale device", "hostname", hostname, "name", host)
+			hosts = append(hosts, host)
+		}
 	}
 	return hosts
+}
+
+type KubeConfig struct {
+	Host string
+}
+
+func (r *DevenvReconciler) createKubeConfig(host string) (string, error) {
+	const kubeConfigTemplate = `
+apiVersion: v1
+clusters:
+- cluster:
+    server: https://{{ .Host }}
+  name: {{ .Host }}
+contexts:
+- context:
+    cluster: {{ .Host }}
+    namespace: default
+    user: tailscale-auth
+  name: tempDevEnv
+current-context: tempDevEnv
+kind: Config
+preferences: {}
+users:
+- name: tailscale-auth
+  user:
+    token: unused
+`
+	config := KubeConfig{
+		Host: host,
+	}
+	tmpl, err := template.New("kubeConfig").Parse(kubeConfigTemplate)
+	if err != nil {
+		return "", err
+	}
+	var out bytes.Buffer
+	err = tmpl.Execute(&out, config)
+	if err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
 }

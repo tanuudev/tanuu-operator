@@ -53,6 +53,8 @@ type DevenvStatus struct {
 	IpAddress     string   `json:"ipAddress,omitempty"`
 	CloudProvider string   `json:"cloudProvider,omitempty"`
 	Status        string   `json:"status,omitempty"`
+	Kubeconfig    string   `json:"kubeconfig,omitempty"`
+	Services      []string `json:"services,omitempty"`
 }
 
 // +kubebuilder:object:root=true

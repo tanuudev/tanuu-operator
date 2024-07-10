@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -154,8 +155,31 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
-		// ts_hosts := r.getTailscaleHosts(ctx, devenv)
-		r.getTailscaleHosts(ctx, devenv)
+		// TODO test the update status with host connection info
+		hosts := r.getTailscaleHosts(ctx, devenv)
+		update := DevenvStatusUpdate{}
+		for _, host := range hosts {
+			if devenv.Status.Kubeconfig == "" {
+				if strings.Contains(host, "-ts") {
+					update.KubeConfig, err = r.createKubeConfig(host)
+					if err != nil {
+						l.Error(err, "Failed to create kubeconfig")
+						return ctrl.Result{}, err
+					}
+
+					r.updateDevenvStatusWithRetry(ctx, devenv, update)
+				}
+				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			} else {
+				if !strings.Contains(host, "-ts") {
+					if !containsString(devenv.Status.Services, host) {
+						update.Services = append(update.Services, host)
+						r.updateDevenvStatusWithRetry(ctx, devenv, update)
+					}
+				}
+			}
+		}
+
 		return ctrl.Result{RequeueAfter: time.Second * 300}, nil
 	}
 

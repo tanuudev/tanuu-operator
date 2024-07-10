@@ -68,6 +68,12 @@ spec:
                 type: array
               ipAddress:
                 type: string
+              kubeconfig:
+                type: string
+              services:
+                items:
+                  type: string
+                type: array
               status:
                 type: string
               workers:
