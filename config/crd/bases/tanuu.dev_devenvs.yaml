@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
-  name: devenvs.tanuu.dev.envs
+  name: devenvs.tanuu.dev
 spec:
-  group: tanuu.dev.envs
+  group: tanuu.dev
   names:
     kind: Devenv
     listKind: DevenvList
@@ -14,7 +14,17 @@ spec:
     singular: devenv
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.workerReplicas
+      name: WorkerCount
+      type: string
+    - jsonPath: .status.gpuReplicas
+      name: GPUCount
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Devenv is the Schema for the devenvs API
@@ -41,14 +51,31 @@ spec:
             properties:
               cloudProvider:
                 type: string
-              gpu:
-                type: boolean
+              ctrlReplicas:
+                type: integer
+              ctrlSelector:
+                type: string
+              gpuReplicas:
+                type: integer
+              gpuSelector:
+                type: string
               name:
                 description: Foo is an example field of Devenv. Edit devenv_types.go
                   to remove/update
                 type: string
               size:
                 type: string
+              workerReplicas:
+                type: integer
+              workerSelector:
+                type: string
+              zone:
+                type: string
+            required:
+            - cloudProvider
+            - gpuReplicas
+            - name
+            - workerReplicas
             type: object
           status:
             description: DevenvStatus defines the observed state of Devenv
@@ -60,11 +87,41 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 items:
-                  type: string
+                  properties:
+                    createdAt:
+                      type: string
+                    name:
+                      type: string
+                    uid:
+                      type: string
+                  required:
+                  - createdAt
+                  - name
+                  - uid
+                  type: object
                 type: array
+              ctrlReplicas:
+                type: integer
+              ctrlSelector:
+                type: string
+              gpuReplicas:
+                type: integer
+              gpuSelector:
+                type: string
               gpus:
                 items:
-                  type: string
+                  properties:
+                    createdAt:
+                      type: string
+                    name:
+                      type: string
+                    uid:
+                      type: string
+                  required:
+                  - createdAt
+                  - name
+                  - uid
+                  type: object
                 type: array
               ipAddress:
                 type: string
@@ -76,13 +133,32 @@ spec:
                 type: array
               status:
                 type: string
+              workerReplicas:
+                type: integer
+              workerSelector:
+                type: string
               workers:
                 items:
-                  type: string
+                  properties:
+                    createdAt:
+                      type: string
+                    name:
+                      type: string
+                    uid:
+                      type: string
+                  required:
+                  - createdAt
+                  - name
+                  - uid
+                  type: object
                 type: array
             type: object
         type: object
     served: true
     storage: true
     subresources:
+      scale:
+        labelSelectorPath: .status.selector
+        specReplicasPath: .spec.replicas
+        statusReplicasPath: .status.replicas
       status: {}

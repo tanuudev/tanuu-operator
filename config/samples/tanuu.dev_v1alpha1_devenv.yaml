@@ -1,4 +1,4 @@
-apiVersion: tanuu.dev.envs/v1alpha1
+apiVersion: tanuu.dev/v1alpha1
 kind: Devenv
 metadata:
   labels:
@@ -8,4 +8,12 @@ metadata:
 spec:
   name: "example-dev-environment"
   cloudProvider: "google"
-  gpu: false
+  workerReplicas: 2
+  ctrlReplicas: 1
+  gpuReplicas: 0
+  zone: "europe-west4-a"
+  # The following fields are optional
+  workerSelector: "worker"
+  ctrlSelector: "controller"
+  gpuSelector: "gpu"
+  

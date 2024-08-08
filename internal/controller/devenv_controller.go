@@ -1,5 +1,5 @@
 /*
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ package controller
 
 import (
 	"context"
-	"strings"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,10 +41,19 @@ type DevenvReconciler struct {
 	Recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=tanuu.dev.envs,resources=devenvs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=tanuu.dev.envs,resources=devenvs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=tanuu.dev.envs,resources=devenvs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=tanuu.dev,resources=nodegroupclaims,verbs=get;list;watch;create;update;patch;delete
+// generateRandomHash generates a random 4-character hash
+func generateRandomHash() (string, error) {
+	bytes := make([]byte, 2) // 2 bytes will give us 4 hex characters
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// +kubebuilder:rbac:groups=tanuu.dev,resources=devenvs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=tanuu.dev,resources=devenvs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=tanuu.dev,resources=devenvs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=tanuu.dev,resources=tanuunodes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list
 
@@ -92,14 +102,18 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			if err := r.delete_omni_cluster(ctx, r.Client, l, req, devenv); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := r.deleteDevClusterNodes(ctx, devenv, "worker"); err != nil {
-				return ctrl.Result{}, err
+			for _, node := range devenv.Status.ControlPlane {
+				if err := r.deleteDevClusterNodes(ctx, devenv, node.Name); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
-			if err := r.deleteDevClusterNodes(ctx, devenv, "control"); err != nil {
-				return ctrl.Result{}, err
+			for _, node := range devenv.Status.Workers {
+				if err := r.deleteDevClusterNodes(ctx, devenv, node.Name); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
-			if devenv.Spec.Gpu {
-				if err := r.deleteDevClusterNodes(ctx, devenv, "gpu"); err != nil {
+			for _, node := range devenv.Status.Gpus {
+				if err := r.deleteDevClusterNodes(ctx, devenv, node.Name); err != nil {
 					return ctrl.Result{}, err
 				}
 			}
@@ -116,11 +130,60 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Mark as pending but not ready if it's a new object
 		update := DevenvStatusUpdate{}
 		if devenv.Status.Status == "" {
+			for i := 0; i < devenv.Spec.CtrlReplicas; i++ {
+				hash, err := generateRandomHash()
+				if err != nil {
+					l.Error(err, "Failed to generate random hash")
+					return ctrl.Result{}, err
+				}
+				NodeInfo := tanuudevv1alpha1.NodeInfo{}
+				NodeInfo.Name = devenv.Name + "-control-" + hash
+				update.ControlPlane = append(update.ControlPlane, NodeInfo)
+			}
+			for i := 0; i < devenv.Spec.WorkerReplicas; i++ {
+				hash, err := generateRandomHash()
+				if err != nil {
+					l.Error(err, "Failed to generate random hash")
+					return ctrl.Result{}, err
+				}
+				NodeInfo := tanuudevv1alpha1.NodeInfo{}
+				NodeInfo.Name = devenv.Name + "-worker-" + hash
+				update.Workers = append(update.Workers, NodeInfo)
+			}
+
+			if devenv.Spec.GpuReplicas > 0 {
+				for i := 0; i < devenv.Spec.GpuReplicas; i++ {
+					hash, err := generateRandomHash()
+					if err != nil {
+						l.Error(err, "Failed to generate random hash")
+						return ctrl.Result{}, err
+					}
+					NodeInfo := tanuudevv1alpha1.NodeInfo{}
+					NodeInfo.Name = devenv.Name + "-gpu-" + hash
+					update.Gpus = append(update.Gpus, NodeInfo)
+					createDevClusterNodes(ctx, r.Client, l, req, devenv, NodeInfo.Name, "gpu")
+				}
+
+			}
+			update.Status = "GPUPending"
+
+			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv GPU provisioned.")
+			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
+				l.Error(err, "Failed to update Devenv status")
+				return ctrl.Result{}, err
+			}
+		}
+		if devenv.Status.Status == "GPUPending" {
+			if devenv.Spec.GpuReplicas > 0 {
+				// TODO create a check for GPU availability
+				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			}
 			update.Status = "Pending"
-			createDevClusterNodes(ctx, r.Client, l, req, devenv, "control")
-			createDevClusterNodes(ctx, r.Client, l, req, devenv, "worker")
-			if devenv.Spec.Gpu {
-				createDevClusterNodes(ctx, r.Client, l, req, devenv, "gpu")
+			for _, node := range devenv.Status.ControlPlane {
+				createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "control")
+			}
+			for _, node := range devenv.Status.Workers {
+				createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "worker")
 			}
 
 			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv provisioned.")
@@ -155,32 +218,75 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
-		// TODO test the update status with host connection info
-		hosts := r.getTailscaleHosts(ctx, devenv)
 		update := DevenvStatusUpdate{}
-		for _, host := range hosts {
-			if devenv.Status.Kubeconfig == "" {
-				if strings.Contains(host, "-ts") {
-					update.KubeConfig, err = r.createKubeConfig(host)
-					if err != nil {
-						l.Error(err, "Failed to create kubeconfig")
-						return ctrl.Result{}, err
-					}
+		update.CtrlReplicas = len(devenv.Status.ControlPlane)
+		update.WorkerReplicas = len(devenv.Status.Workers)
+		update.GpuReplicas = len(devenv.Status.Gpus)
+		r.updateDevenvStatusWithRetry(ctx, devenv, update)
+		// TODO delete the oldest nodes when scaling down
+		if devenv.Spec.WorkerReplicas != update.WorkerReplicas {
+			l.Info("Updating worker replicas")
+			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
+				hash, err := generateRandomHash()
+				if err != nil {
+					l.Error(err, "Failed to generate random hash")
+					return ctrl.Result{}, err
+				}
+				NodeInfo := tanuudevv1alpha1.NodeInfo{}
+				NodeInfo.Name = devenv.Name + "-worker-" + hash
+				update.Workers = append(update.Workers, NodeInfo)
+				update.Status = "Scaling"
+				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
+					l.Error(err, "Failed to update Devenv status")
+					return ctrl.Result{}, err
+				}
 
-					r.updateDevenvStatusWithRetry(ctx, devenv, update)
-				}
+				createDevClusterNodes(ctx, r.Client, l, req, devenv, NodeInfo.Name, "worker")
+
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-			} else {
-				if !strings.Contains(host, "-ts") {
-					if !containsString(devenv.Status.Services, host) {
-						update.Services = append(update.Services, host)
-						r.updateDevenvStatusWithRetry(ctx, devenv, update)
-					}
-				}
 			}
 		}
+		if devenv.Spec.CtrlReplicas != update.CtrlReplicas {
+			l.Info("Updating control replicas")
+		}
+		if devenv.Spec.GpuReplicas != update.GpuReplicas {
 
-		return ctrl.Result{RequeueAfter: time.Second * 300}, nil
+			l.Info("Updating gpu replicas")
+		}
+		r.updateDevenvStatusWithRetry(ctx, devenv, update)
+		if devenv.Status.Kubeconfig == "" {
+			hostname := devenv.Name + "-ts"
+			update.KubeConfig, err = r.createKubeConfig(hostname)
+			if err != nil {
+				l.Error(err, "Failed to create kubeconfig")
+				return ctrl.Result{}, err
+			}
+			r.updateDevenvStatusWithRetry(ctx, devenv, update)
+
+			// hosts := r.getTailscaleHosts(ctx, devenv)
+			// for _, host := range hosts {
+			// 	if devenv.Status.Kubeconfig == "" {
+			// 		if strings.Contains(host, "-ts") {
+			// 			update.KubeConfig, err = r.createKubeConfig(host)
+			// 			if err != nil {
+			// 				l.Error(err, "Failed to create kubeconfig")
+			// 				return ctrl.Result{}, err
+			// 			}
+
+			// 			r.updateDevenvStatusWithRetry(ctx, devenv, update)
+			// 		}
+			// 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			// 	} else {
+			// 		if !strings.Contains(host, "-ts") {
+			// 			if !containsString(devenv.Status.Services, host) {
+			// 				update.Services = append(update.Services, host)
+			// 				r.updateDevenvStatusWithRetry(ctx, devenv, update)
+			// 			}
+			// 		}
+			// 	}
+			// }
+		}
+		return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 	}
 
 	if err := r.Get(ctx, req.NamespacedName, devenv); err != nil {

@@ -1,5 +1,5 @@
 /*
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ import (
 	"context"
 	"strings"
 	templ "text/template"
+	"time"
 
+	"github.com/cosi-project/runtime/pkg/resource"
 	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/go-logr/logr"
 	"github.com/siderolabs/omni/client/pkg/client"
@@ -80,6 +82,9 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		return err
 	}
 	update := &DevenvStatusUpdate{}
+	update.ControlPlane = devenv.Status.ControlPlane
+	update.Workers = devenv.Status.Workers
+	update.Gpus = devenv.Status.Gpus
 	for iter := safe.IteratorFromList(machines); iter.Next(); {
 		item := iter.Value()
 		typedSpec := item.TypedSpec()
@@ -94,38 +99,62 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		if network == nil {
 			return nil // or continue
 		}
-		if strings.Contains(item.TypedSpec().Value.Network.Hostname, devenv.Spec.Name) {
-			l.Info("machine " + item.TypedSpec().Value.Network.Hostname + ", found: ")
-			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "control") {
-				update.ControlPlane = append(update.ControlPlane, "  - "+item.Metadata().ID())
-			}
-			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "worker") {
-				update.Workers = append(update.Workers, "  - "+item.Metadata().ID())
-			}
-			if strings.Contains(item.TypedSpec().Value.Network.Hostname, "gpu") {
-				update.Gpus = append(update.Gpus, "  - "+item.Metadata().ID())
+		for _, node := range devenv.Status.ControlPlane {
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, node.Name) {
+				node.UID = item.Metadata().ID()
+				node.CreatedAt = time.Now().String()
+				for i, updateNode := range update.ControlPlane {
+					if updateNode.Name == node.Name {
+						update.ControlPlane[i] = node
+						break
+					}
+				}
 			}
 		}
+		for _, node := range devenv.Status.Workers {
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, node.Name) {
+				node.UID = item.Metadata().ID()
+				node.CreatedAt = time.Now().String()
+				for i, updateNode := range update.Workers {
+					if updateNode.Name == node.Name {
+						update.Workers[i] = node
+						break
+					}
+				}
+			}
+		}
+		for _, node := range devenv.Status.Gpus {
+			if strings.Contains(item.TypedSpec().Value.Network.Hostname, node.Name) {
+				node.UID = item.Metadata().ID()
+				node.CreatedAt = time.Now().String()
+				for i, updateNode := range update.Gpus {
+					if updateNode.Name == node.Name {
+						update.Gpus[i] = node
+						break
+					}
+				}
+			}
+		}
+	}
+	nodesReady := 0
+	nodeCount := devenv.Spec.CtrlReplicas + devenv.Spec.WorkerReplicas + devenv.Spec.GpuReplicas
+	for _, node := range update.ControlPlane {
+		if node.UID != "" {
+			nodesReady++
+		}
+	}
+	for _, node := range update.Workers {
+		if node.UID != "" {
+			nodesReady++
+		}
+	}
+	for _, node := range update.Gpus {
+		if node.UID != "" {
+			nodesReady++
+		}
+	}
 
-	}
-	allConditionsMet := true
-
-	if len(update.ControlPlane) != 1 {
-		l.Info("control plane not found")
-		allConditionsMet = false
-	}
-	// TODO make the number of worker nodes a variable
-	if len(update.Workers) != 2 {
-		l.Info("worker nodes not found")
-		allConditionsMet = false
-	}
-	// TODO make the gpu nodes optional and variable
-	if devenv.Spec.Gpu && len(update.Gpus) != 1 {
-		l.Info("gpu nodes not found")
-		allConditionsMet = false
-	}
-
-	if allConditionsMet {
+	if nodesReady == nodeCount {
 		update.Status = "Starting"
 		if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
 			l.Error(err, "Failed to update Devenv status to Ready")
@@ -166,10 +195,24 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 	environment := Environment{}
 	var buf bytes.Buffer
+	// TODO add a hash to the name to avoid duplicates
 	environment.Name = devenv.Spec.Name
-	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
-	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
-	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	controlplanes := []string{}
+	workers := []string{}
+	gpus := []string{}
+	for _, node := range devenv.Status.ControlPlane {
+		controlplanes = append(controlplanes, "  - "+node.UID)
+	}
+	for _, node := range devenv.Status.Workers {
+		workers = append(workers, "  - "+node.UID)
+	}
+	for _, node := range devenv.Status.Gpus {
+		gpus = append(gpus, "  - "+node.UID)
+	}
+
+	environment.ControlPlane = strings.Join(controlplanes, "\n")
+	environment.Workers = strings.Join(workers, "\n")
+	environment.Gpus = strings.Join(gpus, "\n")
 	environment.TailScaleClientID = string(secret.Data["TailScaleClientID"])
 	environment.TailScaleClientSecret = string(secret.Data["TailScaleClientSecret"])
 	environment.GitHubToken = string(secret.Data["GitHubToken"])
@@ -258,7 +301,6 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 
 }
 
-// TODO Delete cluster nodes also
 func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
@@ -288,15 +330,27 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 	environment := Environment{}
 	var buf bytes.Buffer
 	environment.Name = devenv.Spec.Name
-	environment.ControlPlane = strings.Join(devenv.Status.ControlPlane, "\n")
-	environment.Workers = strings.Join(devenv.Status.Workers, "\n")
-	environment.Gpus = strings.Join(devenv.Status.Gpus, "\n")
+	controlplanes := []string{}
+	workers := []string{}
+	gpus := []string{}
+	for _, node := range devenv.Status.ControlPlane {
+		controlplanes = append(controlplanes, "  - "+node.UID)
+	}
+	for _, node := range devenv.Status.Workers {
+		workers = append(workers, "  - "+node.UID)
+	}
+	for _, node := range devenv.Status.Gpus {
+		gpus = append(gpus, "  - "+node.UID)
+	}
+
+	environment.ControlPlane = strings.Join(controlplanes, "\n")
+	environment.Workers = strings.Join(workers, "\n")
+	environment.Gpus = strings.Join(gpus, "\n")
 	// LEAVE these as null, as they are not used for deletion
 	environment.TailScaleClientID = "null"
 	environment.TailScaleClientSecret = "null"
 	environment.GitHubToken = "null"
 	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
-	// l.Info(clustertempl.Root.String())
 	err = clustertempl.Execute(&buf, environment)
 	if err != nil {
 		l.Error(err, "Failed to execute template")
@@ -308,18 +362,20 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 
 	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
 	if err != nil {
-		l.Error(err, "failed to create omni client")
+		l.Error(err, "failed to delete omni client")
 		return err
 	}
 	st := client.Omni().State()
 	templ1, err := template.Load(bytes.NewReader(buf.Bytes()))
 	if err != nil {
-		l.Error(err, "failed to create omni client")
+		l.Error(err, "failed to delete omni client")
 		return err
 	}
+
 	syncDelete, err := templ1.Delete(ctx, st)
+
 	if err != nil {
-		l.Error(err, "failed to create omni client")
+		l.Error(err, "failed to delete omni client")
 		return err
 	}
 	for _, r := range syncDelete.Destroy {
@@ -332,6 +388,39 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 		}
 	}
 	l.Info("Deleting cluster")
+	// Getting the resources from the Omni state.
+	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "failed to delete omni client")
+	}
+	for iter := safe.IteratorFromList(machines); iter.Next(); {
+		item := iter.Value()
+		// loop through the devenv controplane nodes and delete them
+		for _, node := range devenv.Status.ControlPlane {
+			if item.Metadata().ID() == node.UID {
+				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
+				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
+					return err
+				}
+			}
+		}
+		for _, node := range devenv.Status.Workers {
+			if item.Metadata().ID() == node.UID {
+				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
+				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
+					return err
+				}
+			}
+		}
+		for _, node := range devenv.Status.Gpus {
+			if item.Metadata().ID() == node.UID {
+				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
+				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 
 }

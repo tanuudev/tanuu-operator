@@ -1,5 +1,5 @@
 /*
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,8 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -57,41 +55,31 @@ func parseConfigString(config string) map[string]interface{} {
 	return result
 }
 
-func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodetype string) {
-	// Define the ConfigMap object
-	configMap := &corev1.ConfigMap{}
-	// Define the namespaced name to look up the ConfigMap
-	namespacedName := types.NamespacedName{
-		Namespace: "tanuu-system",
-		Name:      "node-configs",
-	}
-	// Get the ConfigMap
-	if err := client.Get(ctx, namespacedName, configMap); err != nil {
-		l.Error(err, "Failed to get ConfigMap")
-		return
-	}
-
-	// Extract the configuration string
-	configString, exists := configMap.Data[nodetype]
-	if !exists {
-		panic("Specified key does not exist in the ConfigMap")
+func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodename string, nodetype string) {
+	nodetypeselector := ""
+	if nodetype == "worker" {
+		nodetypeselector = devenv.Spec.WorkerSelector
+	} else if nodetype == "control" {
+		nodetypeselector = devenv.Spec.CtrlSelector
+	} else if nodetype == "gpu" {
+		nodetypeselector = devenv.Spec.GpuSelector
 	}
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "tanuu.dev/v1alpha1",
-			"kind":       "NodeGroupClaim",
+			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
-				"name":      devenv.Spec.Name + "-" + nodetype + "-group",
-				"namespace": req.Namespace,
+				"name":      nodename,
+				"namespace": "tanuu-system",
 			},
 			"spec": map[string]interface{}{
 				"compositionSelector": map[string]interface{}{
 					"matchLabels": map[string]interface{}{
 						"provider": devenv.Spec.CloudProvider,
-						"cluster":  "gke"},
+						"nodetype": nodetypeselector},
 				},
-				"id":         devenv.Spec.Name + "-" + nodetype + "-group",
-				"parameters": parseConfigString(configString),
+				"parameters": map[string]interface{}{
+					"zone": devenv.Spec.Zone},
 			},
 		},
 	}
@@ -107,19 +95,18 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 	}
 }
 
-func (r *DevenvReconciler) deleteDevClusterNodes(ctx context.Context, devenv *tanuudevv1alpha1.Devenv, nodetype string) error {
+func (r *DevenvReconciler) deleteDevClusterNodes(ctx context.Context, devenv *tanuudevv1alpha1.Devenv, nodename string) error {
 	l := log.FromContext(ctx)
 	c := r.Client
-	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(devenv)}
 	// deleteDevCluster(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request)
 	// Define the custom resource to delete
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "tanuu.dev/v1alpha1",
-			"kind":       "NodeGroupClaim",
+			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
-				"name":      devenv.Spec.Name + "-" + nodetype + "-group",
-				"namespace": req.Namespace,
+				"name":      nodename,
+				"namespace": "tanuu-system",
 			},
 		},
 	}
