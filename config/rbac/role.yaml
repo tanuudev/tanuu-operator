@@ -21,18 +21,6 @@ rules:
 - apiGroups:
   - tanuu.dev
   resources:
-  - nodegroupclaims
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - tanuu.dev.envs
-  resources:
   - devenvs
   verbs:
   - create
@@ -43,16 +31,28 @@ rules:
   - update
   - watch
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - devenvs/finalizers
   verbs:
   - update
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - devenvs/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - tanuu.dev
+  resources:
+  - tanuunodes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

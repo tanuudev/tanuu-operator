@@ -8,7 +8,7 @@ metadata:
   name: config-viewer-role
 rules:
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - configs
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - configs/status
   verbs:

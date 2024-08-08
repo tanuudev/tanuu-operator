@@ -1,5 +1,5 @@
 /*
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,14 +61,20 @@ func (r *DevenvReconciler) checkDevenvReadiness(ctx context.Context, ctrlclient 
 
 // DevenvStatusUpdate represents the status information you want to update for a Devenv object.
 type DevenvStatusUpdate struct {
-	ControlPlane  []string
-	Workers       []string
-	Gpus          []string
-	IpAddress     string
-	CloudProvider string
-	Status        string
-	KubeConfig    string
-	Services      []string
+	ControlPlane   []tanuudevv1alpha1.NodeInfo
+	Workers        []tanuudevv1alpha1.NodeInfo
+	Gpus           []tanuudevv1alpha1.NodeInfo
+	IpAddress      string
+	CloudProvider  string
+	Status         string
+	KubeConfig     string
+	Services       []string
+	WorkerReplicas int
+	CtrlReplicas   int
+	GpuReplicas    int
+	WorkerSelector string
+	CtrlSelector   string
+	GpuSelector    string
 }
 
 // updateDevenvStatusWithRetry updates the status of a Devenv object with retry logic.
@@ -106,6 +112,17 @@ func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, deve
 		}
 		if update.Services != nil {
 			latestDevenv.Status.Services = update.Services
+		}
+		if update.WorkerReplicas != 0 {
+			latestDevenv.Status.WorkerReplicas = update.WorkerReplicas
+		}
+		if update.CtrlReplicas != 0 {
+			latestDevenv.Status.CtrlReplicas = update.CtrlReplicas
+		}
+		if update.GpuReplicas != 0 {
+			latestDevenv.Status.GpuReplicas = update.GpuReplicas
+		} else {
+			latestDevenv.Status.GpuReplicas = 0
 		}
 
 		err = r.Status().Update(ctx, latestDevenv)

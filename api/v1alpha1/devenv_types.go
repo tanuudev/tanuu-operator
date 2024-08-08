@@ -1,5 +1,5 @@
 /*
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,34 +31,56 @@ const (
 	SizeLarge  DevenvSize = "large"
 )
 
+type NodeInfo struct {
+	Name      string `json:"name"`
+	UID       string `json:"uid"`
+	CreatedAt string `json:"createdAt"`
+}
+
 // DevenvSpec defines the desired state of Devenv
 type DevenvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
-	Name          string     `json:"name,omitempty"`
-	CloudProvider string     `json:"cloudProvider,omitempty"`
-	Gpu           bool       `json:"gpu,omitempty"`
-	Size          DevenvSize `json:"size,omitempty"`
+	Name           string     `json:"name"`
+	CloudProvider  string     `json:"cloudProvider"`
+	Size           DevenvSize `json:"size,omitempty"`
+	WorkerReplicas int        `json:"workerReplicas"`
+	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
+	GpuReplicas    int        `json:"gpuReplicas"`
+	WorkerSelector string     `json:"workerSelector,omitempty"`
+	CtrlSelector   string     `json:"ctrlSelector,omitempty"`
+	GpuSelector    string     `json:"gpuSelector,omitempty"`
+	Zone           string     `json:"zone,omitempty"`
 }
 
 // DevenvStatus defines the observed state of Devenv
 type DevenvStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ControlPlane  []string `json:"controlPlane,omitempty"`
-	Workers       []string `json:"workers,omitempty"`
-	Gpus          []string `json:"gpus,omitempty"`
-	IpAddress     string   `json:"ipAddress,omitempty"`
-	CloudProvider string   `json:"cloudProvider,omitempty"`
-	Status        string   `json:"status,omitempty"`
-	Kubeconfig    string   `json:"kubeconfig,omitempty"`
-	Services      []string `json:"services,omitempty"`
+	ControlPlane   []NodeInfo `json:"controlPlane,omitempty"`
+	Workers        []NodeInfo `json:"workers,omitempty"`
+	Gpus           []NodeInfo `json:"gpus,omitempty"`
+	IpAddress      string     `json:"ipAddress,omitempty"`
+	CloudProvider  string     `json:"cloudProvider,omitempty"`
+	Status         string     `json:"status,omitempty"`
+	Kubeconfig     string     `json:"kubeconfig,omitempty"`
+	Services       []string   `json:"services,omitempty"`
+	WorkerReplicas int        `json:"workerReplicas,omitempty"`
+	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
+	GpuReplicas    int        `json:"gpuReplicas,omitempty"`
+	WorkerSelector string     `json:"workerSelector,omitempty"`
+	CtrlSelector   string     `json:"ctrlSelector,omitempty"`
+	GpuSelector    string     `json:"gpuSelector,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.selector
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.status`
+// +kubebuilder:printcolumn:name="WorkerCount",type=string,JSONPath=`.status.workerReplicas`
+// +kubebuilder:printcolumn:name="GPUCount",type=string,JSONPath=`.status.gpuReplicas`
 
 // Devenv is the Schema for the devenvs API
 type Devenv struct {

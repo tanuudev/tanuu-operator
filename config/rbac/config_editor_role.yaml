@@ -8,7 +8,7 @@ metadata:
   name: config-editor-role
 rules:
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - configs
   verbs:
@@ -20,7 +20,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - configs/status
   verbs:

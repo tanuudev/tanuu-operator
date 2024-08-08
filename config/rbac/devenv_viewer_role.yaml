@@ -8,7 +8,7 @@ metadata:
   name: devenv-viewer-role
 rules:
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - devenvs
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - tanuu.dev.envs
+  - tanuu.dev
   resources:
   - devenvs/status
   verbs:

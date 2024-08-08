@@ -7,6 +7,7 @@ toolchain go1.22.4
 require (
 	github.com/cosi-project/runtime v0.5.0
 	github.com/go-logr/logr v1.4.1
+	github.com/lib/pq v1.10.9
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.32.0
 	github.com/siderolabs/omni/client v0.38.0
@@ -54,7 +55,6 @@ require (
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/jsimonetti/rtnetlink v1.4.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mdlayher/ethtool v0.1.0 // indirect

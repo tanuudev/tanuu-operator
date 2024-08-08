@@ -98,7 +98,7 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/tanuu-operator/<tag or 
 
 ## License
 
-Copyright 2024 punasusi.
+Copyright 2024 tanuudev.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
