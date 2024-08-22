@@ -70,7 +70,6 @@ type DevenvStatusUpdate struct {
 	KubeConfig     string
 	Services       []string
 	WorkerReplicas int
-	CtrlReplicas   int
 	GpuReplicas    int
 	WorkerSelector string
 	CtrlSelector   string
@@ -115,9 +114,6 @@ func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, deve
 		}
 		if update.WorkerReplicas != 0 {
 			latestDevenv.Status.WorkerReplicas = update.WorkerReplicas
-		}
-		if update.CtrlReplicas != 0 {
-			latestDevenv.Status.CtrlReplicas = update.CtrlReplicas
 		}
 		if update.GpuReplicas != 0 {
 			latestDevenv.Status.GpuReplicas = update.GpuReplicas

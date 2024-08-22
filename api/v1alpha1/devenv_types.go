@@ -45,6 +45,8 @@ type DevenvSpec struct {
 	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
 	Name           string     `json:"name"`
 	CloudProvider  string     `json:"cloudProvider"`
+	TalosVersion   string     `json:"talosVersion"`
+	K8sVersion     string     `json:"k8sVersion"`
 	Size           DevenvSize `json:"size,omitempty"`
 	WorkerReplicas int        `json:"workerReplicas"`
 	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
@@ -68,7 +70,6 @@ type DevenvStatus struct {
 	Kubeconfig     string     `json:"kubeconfig,omitempty"`
 	Services       []string   `json:"services,omitempty"`
 	WorkerReplicas int        `json:"workerReplicas,omitempty"`
-	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
 	GpuReplicas    int        `json:"gpuReplicas,omitempty"`
 	WorkerSelector string     `json:"workerSelector,omitempty"`
 	CtrlSelector   string     `json:"ctrlSelector,omitempty"`

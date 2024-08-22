@@ -32,6 +32,7 @@ import (
 	"github.com/siderolabs/omni/client/pkg/omni/resources"
 	"github.com/siderolabs/omni/client/pkg/omni/resources/omni"
 	"github.com/siderolabs/omni/client/pkg/template"
+	"github.com/siderolabs/omni/client/pkg/template/operations"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,6 +50,8 @@ type Environment struct {
 	TailScaleClientSecret string
 	GitHubToken           string
 	Gpu                   bool
+	K8sVersion            string
+	TalosVersion          string
 }
 
 var clustertempl *templ.Template
@@ -70,7 +73,7 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
 
 	if err != nil {
-		l.Error(err, "failed to create omni client %s", err)
+		l.Error(err, "failed to create omni client")
 		return err
 	}
 
@@ -78,14 +81,14 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
-		l.Error(err, "failed to get machines %s", err)
+		l.Error(err, "failed to get machines")
 		return err
 	}
 	update := &DevenvStatusUpdate{}
 	update.ControlPlane = devenv.Status.ControlPlane
 	update.Workers = devenv.Status.Workers
 	update.Gpus = devenv.Status.Gpus
-	for iter := safe.IteratorFromList(machines); iter.Next(); {
+	for iter := machines.Iterator(); iter.Next(); {
 		item := iter.Value()
 		typedSpec := item.TypedSpec()
 		if typedSpec == nil {
@@ -167,6 +170,22 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 }
 
+func (r *DevenvReconciler) fetch_nodes_available(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
+	// update := &DevenvStatusUpdate{}
+	// // TODO if any nodes already available, add them to the update
+	// // TODO set created at to 'static' for these nodes
+	// NodeInfo := tanuudevv1alpha1.NodeInfo{}
+	// NodeInfo.Name = "test-control-123"
+	// NodeInfo.CreatedAt = "static"
+	// NodeInfo.UID = "test-control-123"
+	// update.Workers = append(update.Workers, NodeInfo)
+	// if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
+	// 	l.Error(err, "Failed to update Devenv status to Ready")
+	// 	return err
+	// }
+	return nil
+}
+
 func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
@@ -195,8 +214,9 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 	environment := Environment{}
 	var buf bytes.Buffer
-	// TODO add a hash to the name to avoid duplicates
 	environment.Name = devenv.Spec.Name
+	environment.K8sVersion = devenv.Spec.K8sVersion
+	environment.TalosVersion = devenv.Spec.TalosVersion
 	controlplanes := []string{}
 	workers := []string{}
 	gpus := []string{}
@@ -257,6 +277,61 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 }
 
+func (r *DevenvReconciler) update_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
+	secret := &corev1.Secret{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return false, err
+	}
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return false, err
+	}
+	st := client.Omni().State()
+
+	clusters, err := safe.StateList[*omni.ClusterStatus](ctx, st, omni.NewClusterStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "failed to get cluster")
+		return false, err
+	}
+
+	for iter := clusters.Iterator(); iter.Next(); {
+		item := iter.Value()
+
+		if item.Metadata().ID() == devenv.Spec.Name {
+			var output bytes.Buffer
+			_, err = operations.ExportTemplate(ctx, st, devenv.Spec.Name, &output)
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return false, err
+			}
+			// TODO update the template with new node info
+			// TODO update the cluster with the new template
+			templ1, err := template.Load(bytes.NewReader(output.Bytes()))
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return false, err
+			}
+			clusterName, err := templ1.ClusterName()
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return false, err
+			}
+			l.Info("Found cluster:" + clusterName)
+
+		}
+	}
+
+	return false, nil
+
+}
+
 func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	secret := &corev1.Secret{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
@@ -277,10 +352,10 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 
 	clusters, err := safe.StateList[*omni.ClusterStatus](ctx, st, omni.NewClusterStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
-		l.Error(err, "failed to get machines %s", err)
+		l.Error(err, "failed to get machines")
 		return false, err
 	}
-	for iter := safe.IteratorFromList(clusters); iter.Next(); {
+	for iter := clusters.Iterator(); iter.Next(); {
 		item := iter.Value()
 		if item.Metadata().ID() == devenv.Spec.Name {
 			typedSpec := item.TypedSpec()
@@ -302,58 +377,11 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 }
 
 func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
+
 	secret := &corev1.Secret{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
-		return err
-	}
-	// Define the ConfigMap object
-	configMap := &corev1.ConfigMap{}
-	// Define the namespaced name to look up the ConfigMap
-	namespacedName := types.NamespacedName{
-		Namespace: "tanuu-system",
-		Name:      "cluster",
-	}
-	// Get the ConfigMap
-	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
-		l.Error(err, "Failed to get ConfigMap")
-		return err
-	}
-
-	// Extract the configuration string
-	configString, exists := configMap.Data["cluster.tmpl"]
-	if !exists {
-		panic("Specified key does not exist in the ConfigMap")
-	}
-
-	environment := Environment{}
-	var buf bytes.Buffer
-	environment.Name = devenv.Spec.Name
-	controlplanes := []string{}
-	workers := []string{}
-	gpus := []string{}
-	for _, node := range devenv.Status.ControlPlane {
-		controlplanes = append(controlplanes, "  - "+node.UID)
-	}
-	for _, node := range devenv.Status.Workers {
-		workers = append(workers, "  - "+node.UID)
-	}
-	for _, node := range devenv.Status.Gpus {
-		gpus = append(gpus, "  - "+node.UID)
-	}
-
-	environment.ControlPlane = strings.Join(controlplanes, "\n")
-	environment.Workers = strings.Join(workers, "\n")
-	environment.Gpus = strings.Join(gpus, "\n")
-	// LEAVE these as null, as they are not used for deletion
-	environment.TailScaleClientID = "null"
-	environment.TailScaleClientSecret = "null"
-	environment.GitHubToken = "null"
-	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
-	err = clustertempl.Execute(&buf, environment)
-	if err != nil {
-		l.Error(err, "Failed to execute template")
 		return err
 	}
 
@@ -362,38 +390,21 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 
 	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
 	if err != nil {
-		l.Error(err, "failed to delete omni client")
+		l.Error(err, "failed to get omni client")
 		return err
 	}
 	st := client.Omni().State()
-	templ1, err := template.Load(bytes.NewReader(buf.Bytes()))
+
+	clusters, err := safe.StateList[*omni.ClusterStatus](ctx, st, omni.NewClusterStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
-		l.Error(err, "failed to delete omni client")
+		l.Error(err, "failed to get cluster.")
 		return err
 	}
-
-	syncDelete, err := templ1.Delete(ctx, st)
-
-	if err != nil {
-		l.Error(err, "failed to delete omni client")
-		return err
-	}
-	for _, r := range syncDelete.Destroy {
-		for _, item := range r {
-			if item != nil {
-				if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	l.Info("Deleting cluster")
-	// Getting the resources from the Omni state.
 	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
 		l.Error(err, "failed to delete omni client")
 	}
-	for iter := safe.IteratorFromList(machines); iter.Next(); {
+	for iter := machines.Iterator(); iter.Next(); {
 		item := iter.Value()
 		// loop through the devenv controplane nodes and delete them
 		for _, node := range devenv.Status.ControlPlane {
@@ -421,6 +432,49 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 			}
 		}
 	}
+	templ1 := &template.Template{}
+	for iter := clusters.Iterator(); iter.Next(); {
+		item := iter.Value()
+
+		if item.Metadata().ID() == devenv.Spec.Name {
+			var output bytes.Buffer
+			_, err = operations.ExportTemplate(ctx, st, devenv.Spec.Name, &output)
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return err
+			}
+			templ1, err = template.Load(bytes.NewReader(output.Bytes()))
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return err
+			}
+			clusterName, err := templ1.ClusterName()
+			if err != nil {
+				l.Error(err, "failed to get cluster")
+				return err
+			}
+			l.Info("Found cluster:" + clusterName)
+
+		}
+	}
+	syncDelete, err := templ1.Delete(ctx, st)
+
+	if err != nil {
+		l.Error(err, "failed to delete omni client")
+		return err
+	}
+	for _, r := range syncDelete.Destroy {
+		for _, item := range r {
+			if item != nil {
+				if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	l.Info("Deleting cluster")
+	// Getting the resources from the Omni state.
+
 	return nil
 
 }

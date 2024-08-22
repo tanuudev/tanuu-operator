@@ -59,11 +59,15 @@ spec:
                 type: integer
               gpuSelector:
                 type: string
+              k8sVersion:
+                type: string
               name:
                 description: Foo is an example field of Devenv. Edit devenv_types.go
                   to remove/update
                 type: string
               size:
+                type: string
+              talosVersion:
                 type: string
               workerReplicas:
                 type: integer
@@ -74,7 +78,9 @@ spec:
             required:
             - cloudProvider
             - gpuReplicas
+            - k8sVersion
             - name
+            - talosVersion
             - workerReplicas
             type: object
           status:
@@ -100,8 +106,6 @@ spec:
                   - uid
                   type: object
                 type: array
-              ctrlReplicas:
-                type: integer
               ctrlSelector:
                 type: string
               gpuReplicas:

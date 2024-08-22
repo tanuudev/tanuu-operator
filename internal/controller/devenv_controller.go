@@ -129,8 +129,18 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if devenv.Status.Status != "Ready" {
 		// Mark as pending but not ready if it's a new object
 		update := DevenvStatusUpdate{}
+
 		if devenv.Status.Status == "" {
-			for i := 0; i < devenv.Spec.CtrlReplicas; i++ {
+			r.fetch_nodes_available(ctx, r.Client, l, req, devenv)
+			devenv, err = r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
+			if err != nil {
+				l.Error(err, "Failed to fetch Devenv object")
+				return ctrl.Result{}, err
+			}
+			update.ControlPlane = devenv.Status.ControlPlane
+			update.Workers = devenv.Status.Workers
+			update.Gpus = devenv.Status.Gpus
+			for i := len(devenv.Status.ControlPlane); i < devenv.Spec.CtrlReplicas; i++ {
 				hash, err := generateRandomHash()
 				if err != nil {
 					l.Error(err, "Failed to generate random hash")
@@ -140,7 +150,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				NodeInfo.Name = devenv.Name + "-control-" + hash
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
-			for i := 0; i < devenv.Spec.WorkerReplicas; i++ {
+			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
 				hash, err := generateRandomHash()
 				if err != nil {
 					l.Error(err, "Failed to generate random hash")
@@ -152,7 +162,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 
 			if devenv.Spec.GpuReplicas > 0 {
-				for i := 0; i < devenv.Spec.GpuReplicas; i++ {
+				for i := len(devenv.Status.Gpus); i < devenv.Spec.GpuReplicas; i++ {
 					hash, err := generateRandomHash()
 					if err != nil {
 						l.Error(err, "Failed to generate random hash")
@@ -161,7 +171,11 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					NodeInfo := tanuudevv1alpha1.NodeInfo{}
 					NodeInfo.Name = devenv.Name + "-gpu-" + hash
 					update.Gpus = append(update.Gpus, NodeInfo)
-					createDevClusterNodes(ctx, r.Client, l, req, devenv, NodeInfo.Name, "gpu")
+				}
+				for _, node := range devenv.Status.Gpus {
+					if node.UID == "" {
+						createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "gpu")
+					}
 				}
 
 			}
@@ -180,10 +194,14 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 			update.Status = "Pending"
 			for _, node := range devenv.Status.ControlPlane {
-				createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "control")
+				if node.UID == "" {
+					createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "control")
+				}
 			}
 			for _, node := range devenv.Status.Workers {
-				createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "worker")
+				if node.UID == "" {
+					createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "worker")
+				}
 			}
 
 			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv provisioned.")
@@ -200,7 +218,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			l.Error(err, "Failed to check Devenv readiness")
 			return ctrl.Result{}, err
 		}
-
+		r.update_omni_cluster(ctx, r.Client, l, req, devenv)
 		if isReady {
 			update.Status = "Ready"
 			r.Recorder.Event(devenv, "Normal", "Ready", "Devenv ready.")
@@ -219,7 +237,6 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		// Devenv is ready, check if it needs to be updated
 		update := DevenvStatusUpdate{}
-		update.CtrlReplicas = len(devenv.Status.ControlPlane)
 		update.WorkerReplicas = len(devenv.Status.Workers)
 		update.GpuReplicas = len(devenv.Status.Gpus)
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
@@ -232,6 +249,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					l.Error(err, "Failed to generate random hash")
 					return ctrl.Result{}, err
 				}
+				// TODO select any existing nodes first
 				NodeInfo := tanuudevv1alpha1.NodeInfo{}
 				NodeInfo.Name = devenv.Name + "-worker-" + hash
 				update.Workers = append(update.Workers, NodeInfo)
@@ -246,11 +264,8 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 			}
 		}
-		if devenv.Spec.CtrlReplicas != update.CtrlReplicas {
-			l.Info("Updating control replicas")
-		}
 		if devenv.Spec.GpuReplicas != update.GpuReplicas {
-
+			// TODO select any existing nodes first
 			l.Info("Updating gpu replicas")
 		}
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)

@@ -4,16 +4,18 @@ metadata:
   labels:
     app.kubernetes.io/name: tanuu-operator
     app.kubernetes.io/managed-by: kustomize
-  name: devenv-sample
+  name: demo-platform-workshop
 spec:
-  name: "example-dev-environment"
+  name: "platform-workshop"
   cloudProvider: "google"
   workerReplicas: 2
   ctrlReplicas: 1
   gpuReplicas: 0
-  zone: "europe-west4-a"
+  k8sVersion: "v1.29.4"
+  talosVersion: "v1.7.6"
+  zone: "europe-north1-c"
   # The following fields are optional
-  workerSelector: "worker"
-  ctrlSelector: "controller"
-  gpuSelector: "gpu"
+  workerSelector: "base-176"
+  ctrlSelector: "base-176"
+  gpuSelector: "gpu-176"
   
