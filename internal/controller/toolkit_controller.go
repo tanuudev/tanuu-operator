@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-logr/logr"
 	_ "github.com/lib/pq"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -187,23 +188,38 @@ WHERE device.user is NULL;
 }
 
 type KubeConfig struct {
-	Host string
+	Host    string
+	Tailnet string
 }
 
-func (r *DevenvReconciler) createKubeConfig(host string) (string, error) {
+func (r *DevenvReconciler) createKubeConfig(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, host string) (string, error) {
+	configMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	namespacedName := types.NamespacedName{
+		Namespace: "tanuu-system",
+		Name:      "cluster",
+	}
+	// Get the ConfigMap
+	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return "", err
+	}
+
+	// Extract the configuration string
+	tailnet, _ := configMap.Data["tailnet.name"]
 	const kubeConfigTemplate = `
 apiVersion: v1
 clusters:
 - cluster:
-    server: https://{{ .Host }}
+    server: https://{{ .Host }}.{{ .Tailnet }}
   name: {{ .Host }}
 contexts:
 - context:
     cluster: {{ .Host }}
     namespace: default
     user: tailscale-auth
-  name: tempDevEnv
-current-context: tempDevEnv
+  name: {{ .Host }}
+current-context: {{ .Host }}
 kind: Config
 preferences: {}
 users:
@@ -212,7 +228,8 @@ users:
     token: unused
 `
 	config := KubeConfig{
-		Host: host,
+		Host:    host,
+		Tailnet: tailnet,
 	}
 	tmpl, err := template.New("kubeConfig").Parse(kubeConfigTemplate)
 	if err != nil {

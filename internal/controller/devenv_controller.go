@@ -147,7 +147,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					return ctrl.Result{}, err
 				}
 				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Name + "-control-" + hash
+				NodeInfo.Name = devenv.Spec.Name + "-control-" + hash
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
 			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
@@ -157,7 +157,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					return ctrl.Result{}, err
 				}
 				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Name + "-worker-" + hash
+				NodeInfo.Name = devenv.Spec.Name + "-worker-" + hash
 				update.Workers = append(update.Workers, NodeInfo)
 			}
 
@@ -169,7 +169,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 						return ctrl.Result{}, err
 					}
 					NodeInfo := tanuudevv1alpha1.NodeInfo{}
-					NodeInfo.Name = devenv.Name + "-gpu-" + hash
+					NodeInfo.Name = devenv.Spec.Name + "-gpu-" + hash
 					update.Gpus = append(update.Gpus, NodeInfo)
 				}
 				for _, node := range devenv.Status.Gpus {
@@ -251,7 +251,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				}
 				// TODO select any existing nodes first
 				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Name + "-worker-" + hash
+				NodeInfo.Name = devenv.Spec.Name + "-worker-" + hash
 				update.Workers = append(update.Workers, NodeInfo)
 				update.Status = "Scaling"
 				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
@@ -270,36 +270,14 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
 		if devenv.Status.Kubeconfig == "" {
-			hostname := devenv.Name + "-ts"
-			update.KubeConfig, err = r.createKubeConfig(hostname)
+			hostname := devenv.Spec.Name + "-ts"
+			update.KubeConfig, err = r.createKubeConfig(ctx, r.Client, l, hostname)
 			if err != nil {
 				l.Error(err, "Failed to create kubeconfig")
 				return ctrl.Result{}, err
 			}
 			r.updateDevenvStatusWithRetry(ctx, devenv, update)
 
-			// hosts := r.getTailscaleHosts(ctx, devenv)
-			// for _, host := range hosts {
-			// 	if devenv.Status.Kubeconfig == "" {
-			// 		if strings.Contains(host, "-ts") {
-			// 			update.KubeConfig, err = r.createKubeConfig(host)
-			// 			if err != nil {
-			// 				l.Error(err, "Failed to create kubeconfig")
-			// 				return ctrl.Result{}, err
-			// 			}
-
-			// 			r.updateDevenvStatusWithRetry(ctx, devenv, update)
-			// 		}
-			// 		return ctrl.Result{RequeueAfter: time.Second * 30}, nil
-			// 	} else {
-			// 		if !strings.Contains(host, "-ts") {
-			// 			if !containsString(devenv.Status.Services, host) {
-			// 				update.Services = append(update.Services, host)
-			// 				r.updateDevenvStatusWithRetry(ctx, devenv, update)
-			// 			}
-			// 		}
-			// 	}
-			// }
 		}
 		return ctrl.Result{RequeueAfter: time.Second * 120}, nil
 	}
