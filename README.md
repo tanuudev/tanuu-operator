@@ -23,6 +23,7 @@ Installation instructions to come soon, including secrets and configmaps needed 
 **Build and push your image to the location specified by `IMG`:**
 
 ```sh
+docker buildx create --name mybuilder --use
 make docker-build docker-push IMG=<some-registry>/tanuu-operator:tag
 ```
 
