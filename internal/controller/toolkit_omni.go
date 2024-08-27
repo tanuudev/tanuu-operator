@@ -63,9 +63,6 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		l.Error(err, "unable to fetch creds from secret")
 		return err
 	}
-	// version.Name = "omni"
-	// version.SHA = "build SHA"
-	// version.Tag = "v0.9.1"
 
 	url := string(secret.Data["url"])
 	token := string(secret.Data["token"])
@@ -84,10 +81,7 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 		l.Error(err, "failed to get machines")
 		return err
 	}
-	update := &DevenvStatusUpdate{}
-	update.ControlPlane = devenv.Status.ControlPlane
-	update.Workers = devenv.Status.Workers
-	update.Gpus = devenv.Status.Gpus
+	update := CopyDevenvUpdater(*devenv)
 	for iter := machines.Iterator(); iter.Next(); {
 		item := iter.Value()
 		typedSpec := item.TypedSpec()
@@ -159,7 +153,7 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 	if nodesReady == nodeCount {
 		update.Status = "Starting"
-		if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
+		if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 			l.Error(err, "Failed to update Devenv status to Ready")
 			return err
 		}
@@ -171,15 +165,73 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 }
 
 func (r *DevenvReconciler) fetch_nodes_available(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
-	// update := &DevenvStatusUpdate{}
+	secret := &corev1.Secret{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	if err != nil {
+		l.Error(err, "unable to fetch creds from secret")
+		return err
+	}
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
+
+	if err != nil {
+		l.Error(err, "failed to create omni client")
+		return err
+	}
+
+	st := client.Omni().State()
+
+	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "failed to get machines")
+		return err
+	}
+	update := CopyDevenvUpdater(*devenv)
+	for iter := machines.Iterator(); iter.Next(); {
+		item := iter.Value()
+		typedSpec := item.TypedSpec()
+		typedMetadata := item.Metadata()
+		typedMetadataValue := typedMetadata.Labels()
+		if typedMetadata == nil {
+			return nil // or continue, depending on the context
+		}
+		if typedMetadataValue == nil {
+			return nil // or continue
+		}
+		if typedSpec == nil {
+			return nil // or continue, depending on the context
+		}
+		typedSpecValue := typedSpec.Value
+		if typedSpecValue == nil {
+			return nil // or continue
+		}
+		// labels := typedSpecValue.ImageLabels
+		labels := typedMetadataValue.KV
+		cluster := typedSpecValue.Cluster
+		if cluster != "" {
+			for key, value := range labels.Raw() {
+				if key == "pool" {
+					l.Info("Found node with pool label " + value)
+				}
+			}
+		}
+
+	}
+	// TODO Delete this when the update is actually used
+	l.Info("Using the available nodes from: " + update.Status)
+
 	// // TODO if any nodes already available, add them to the update
-	// // TODO set created at to 'static' for these nodes
+	// // TODO set created at to 'pool-time' for these nodes
+
 	// NodeInfo := tanuudevv1alpha1.NodeInfo{}
 	// NodeInfo.Name = "test-control-123"
 	// NodeInfo.CreatedAt = "static"
 	// NodeInfo.UID = "test-control-123"
 	// update.Workers = append(update.Workers, NodeInfo)
-	// if err := r.updateDevenvStatusWithRetry(ctx, devenv, *update); err != nil {
+	// if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 	// 	l.Error(err, "Failed to update Devenv status to Ready")
 	// 	return err
 	// }

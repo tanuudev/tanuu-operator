@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: demo-platform-workshop
 spec:
-  name: "platform-workshop"
+  name: "demo-platform-workshop"
   cloudProvider: "google"
   workerReplicas: 2
   ctrlReplicas: 1

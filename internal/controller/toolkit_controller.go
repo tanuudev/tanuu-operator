@@ -19,9 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
-	"strings"
 	"text/template"
 
 	"github.com/go-logr/logr"
@@ -58,6 +56,24 @@ func removeString(slice []string, s string) []string {
 
 func (r *DevenvReconciler) checkDevenvReadiness(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	return r.check_omni_cluster(ctx, r.Client, l, req, devenv)
+}
+
+func CopyDevenvUpdater(src tanuudevv1alpha1.Devenv) DevenvStatusUpdate {
+	return DevenvStatusUpdate{
+		ControlPlane:   src.Status.ControlPlane,
+		Workers:        src.Status.Workers,
+		Gpus:           src.Status.Gpus,
+		IpAddress:      src.Status.IpAddress,
+		CloudProvider:  src.Status.CloudProvider,
+		Status:         src.Status.Status,
+		KubeConfig:     src.Status.Kubeconfig,
+		Services:       src.Status.Services,
+		WorkerReplicas: src.Status.WorkerReplicas,
+		GpuReplicas:    src.Status.GpuReplicas,
+		WorkerSelector: src.Status.WorkerSelector,
+		CtrlSelector:   src.Status.CtrlSelector,
+		GpuSelector:    src.Status.GpuSelector,
+	}
 }
 
 // DevenvStatusUpdate represents the status information you want to update for a Devenv object.
@@ -143,48 +159,6 @@ func (r *DevenvReconciler) getDevenvByNameAndNamespace(ctx context.Context, name
 		return nil, err
 	}
 	return devenv, nil
-}
-
-func (r *DevenvReconciler) getTailscaleHosts(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) []string {
-	// Read this from a secret
-	connStr := "user=steampipe password=0255_4271_853e dbname=steampipe host=100.98.238.43 port=9193 sslmode=disable"
-	// Connect to the database
-	db, err := sql.Open("postgres", connStr)
-	l := log.FromContext(ctx)
-	if err != nil {
-		l.Error(err, "failed to connect to the database")
-	}
-	defer db.Close()
-
-	// SQL query
-	sqlQuery := `
-SELECT hostname, name, device.user
-FROM tailscale_device as device
-WHERE device.user is NULL;
-`
-	// Query the database
-	rows, err := db.Query(sqlQuery)
-	if err != nil {
-		l.Error(err, "failed to query the database")
-	}
-	hosts := []string{}
-	defer rows.Close()
-
-	for row := rows; row.Next(); {
-		var hostname string
-		var host string
-		var user sql.NullString
-		err := row.Scan(&hostname, &host, &user)
-		if err != nil {
-			l.Error(err, "failed to scan the row")
-		}
-
-		if strings.Contains(host, devenv.Spec.Name) {
-			l.Info("Tailscale device", "hostname", hostname, "name", host)
-			hosts = append(hosts, host)
-		}
-	}
-	return hosts
 }
 
 type KubeConfig struct {

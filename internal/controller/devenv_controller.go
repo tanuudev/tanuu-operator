@@ -128,7 +128,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	if devenv.Status.Status != "Ready" {
 		// Mark as pending but not ready if it's a new object
-		update := DevenvStatusUpdate{}
+		update := CopyDevenvUpdater(*devenv)
 
 		if devenv.Status.Status == "" {
 			r.fetch_nodes_available(ctx, r.Client, l, req, devenv)
@@ -218,7 +218,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			l.Error(err, "Failed to check Devenv readiness")
 			return ctrl.Result{}, err
 		}
-		r.update_omni_cluster(ctx, r.Client, l, req, devenv)
+		// r.update_omni_cluster(ctx, r.Client, l, req, devenv)
 		if isReady {
 			update.Status = "Ready"
 			r.Recorder.Event(devenv, "Normal", "Ready", "Devenv ready.")
@@ -236,11 +236,12 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
-		update := DevenvStatusUpdate{}
+		update := CopyDevenvUpdater(*devenv)
 		update.WorkerReplicas = len(devenv.Status.Workers)
 		update.GpuReplicas = len(devenv.Status.Gpus)
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
 		// TODO delete the oldest nodes when scaling down
+		// TODO delete non-pool resources first.
 		if devenv.Spec.WorkerReplicas != update.WorkerReplicas {
 			l.Info("Updating worker replicas")
 			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
@@ -258,7 +259,6 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					l.Error(err, "Failed to update Devenv status")
 					return ctrl.Result{}, err
 				}
-
 				createDevClusterNodes(ctx, r.Client, l, req, devenv, NodeInfo.Name, "worker")
 
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
