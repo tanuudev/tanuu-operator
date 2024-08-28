@@ -164,12 +164,13 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 }
 
-func (r *DevenvReconciler) fetch_nodes_available(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
+func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_name string, group string, selector string) (tanuudevv1alpha1.NodeInfo, error) {
 	secret := &corev1.Secret{}
+	nodeinfo := tanuudevv1alpha1.NodeInfo{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
-		return err
+		return nodeinfo, err
 	}
 
 	url := string(secret.Data["url"])
@@ -179,7 +180,7 @@ func (r *DevenvReconciler) fetch_nodes_available(ctx context.Context, ctrlclient
 
 	if err != nil {
 		l.Error(err, "failed to create omni client")
-		return err
+		return nodeinfo, err
 	}
 
 	st := client.Omni().State()
@@ -187,55 +188,53 @@ func (r *DevenvReconciler) fetch_nodes_available(ctx context.Context, ctrlclient
 	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
 	if err != nil {
 		l.Error(err, "failed to get machines")
-		return err
+		return nodeinfo, err
 	}
-	update := CopyDevenvUpdater(*devenv)
 	for iter := machines.Iterator(); iter.Next(); {
 		item := iter.Value()
 		typedSpec := item.TypedSpec()
 		typedMetadata := item.Metadata()
 		typedMetadataValue := typedMetadata.Labels()
 		if typedMetadata == nil {
-			return nil // or continue, depending on the context
+			return nodeinfo, err // or continue, depending on the context
 		}
 		if typedMetadataValue == nil {
-			return nil // or continue
+			return nodeinfo, err // or continue
 		}
 		if typedSpec == nil {
-			return nil // or continue, depending on the context
+			return nodeinfo, err // or continue, depending on the context
 		}
 		typedSpecValue := typedSpec.Value
 		if typedSpecValue == nil {
-			return nil // or continue
+			return nodeinfo, err // or continue
 		}
 		// labels := typedSpecValue.ImageLabels
 		labels := typedMetadataValue.KV
 		cluster := typedSpecValue.Cluster
 		if cluster != "" {
 			for key, value := range labels.Raw() {
-				if key == "pool" {
+				if key == "pool" && value == selector {
+					//TODO fix this to use the correct nodeinfo
+					// The aim here is that we could have a pool of physical nodes that can be used as needed as a pool
+					// for the devenv. This is useful for example when we have a pool of nodes with GPUs.
+					// Selection here might work, needs to check if the node is already in use, is connected and available, and matches the selector.
+					nodeinfo.Name = typedMetadata.ID()
+					nodeinfo.CreatedAt = "pool-" + time.Now().String()
+					nodeinfo.UID = typedMetadata.ID()
 					l.Info("Found node with pool label " + value)
+					return nodeinfo, nil
 				}
 			}
 		}
 
 	}
-	// TODO Delete this when the update is actually used
-	l.Info("Using the available nodes from: " + update.Status)
-
-	// // TODO if any nodes already available, add them to the update
-	// // TODO set created at to 'pool-time' for these nodes
-
-	// NodeInfo := tanuudevv1alpha1.NodeInfo{}
-	// NodeInfo.Name = "test-control-123"
-	// NodeInfo.CreatedAt = "static"
-	// NodeInfo.UID = "test-control-123"
-	// update.Workers = append(update.Workers, NodeInfo)
-	// if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
-	// 	l.Error(err, "Failed to update Devenv status to Ready")
-	// 	return err
-	// }
-	return nil
+	hash, err := generateRandomHash()
+	if err != nil {
+		l.Error(err, "Failed to generate random hash")
+		return nodeinfo, err
+	}
+	nodeinfo.Name = env_name + "-" + group + "-" + hash
+	return nodeinfo, nil
 }
 
 func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
@@ -329,61 +328,6 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 }
 
-func (r *DevenvReconciler) update_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
-	secret := &corev1.Secret{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
-	if err != nil {
-		l.Error(err, "unable to fetch creds from secret")
-		return false, err
-	}
-
-	url := string(secret.Data["url"])
-	token := string(secret.Data["token"])
-
-	client, err := client.New(url, client.WithServiceAccount(token)) // From the generated service account.
-	if err != nil {
-		l.Error(err, "failed to create omni client")
-		return false, err
-	}
-	st := client.Omni().State()
-
-	clusters, err := safe.StateList[*omni.ClusterStatus](ctx, st, omni.NewClusterStatus(resources.DefaultNamespace, "").Metadata())
-	if err != nil {
-		l.Error(err, "failed to get cluster")
-		return false, err
-	}
-
-	for iter := clusters.Iterator(); iter.Next(); {
-		item := iter.Value()
-
-		if item.Metadata().ID() == devenv.Spec.Name {
-			var output bytes.Buffer
-			_, err = operations.ExportTemplate(ctx, st, devenv.Spec.Name, &output)
-			if err != nil {
-				l.Error(err, "failed to get cluster")
-				return false, err
-			}
-			// TODO update the template with new node info
-			// TODO update the cluster with the new template
-			templ1, err := template.Load(bytes.NewReader(output.Bytes()))
-			if err != nil {
-				l.Error(err, "failed to get cluster")
-				return false, err
-			}
-			clusterName, err := templ1.ClusterName()
-			if err != nil {
-				l.Error(err, "failed to get cluster")
-				return false, err
-			}
-			l.Info("Found cluster:" + clusterName)
-
-		}
-	}
-
-	return false, nil
-
-}
-
 func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	secret := &corev1.Secret{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
@@ -411,12 +355,17 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 		item := iter.Value()
 		if item.Metadata().ID() == devenv.Spec.Name {
 			typedSpec := item.TypedSpec()
+			// if num machines != all replicas count then false
 			if typedSpec == nil {
 				return false, nil // or continue, depending on the context
 			}
 			typedSpecValue := typedSpec.Value
 			if typedSpecValue == nil {
 				return false, nil // or continue
+			}
+			totalreplicas := devenv.Spec.CtrlReplicas + devenv.Spec.WorkerReplicas + devenv.Spec.GpuReplicas
+			if typedSpecValue.Machines.Healthy != uint32(totalreplicas) {
+				return false, nil
 			}
 			if typedSpecValue.Ready {
 				return true, nil

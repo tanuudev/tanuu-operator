@@ -123,6 +123,9 @@ func (r *DevenvReconciler) updateDevenvStatusWithRetry(ctx context.Context, deve
 		if update.Status != "" {
 			latestDevenv.Status.Status = update.Status
 		}
+		if update.Status == "Scaling" {
+			latestDevenv.Status.Status = ""
+		}
 		if update.KubeConfig != "" {
 			latestDevenv.Status.Kubeconfig = update.KubeConfig
 		}

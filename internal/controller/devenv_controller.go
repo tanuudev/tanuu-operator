@@ -131,7 +131,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		update := CopyDevenvUpdater(*devenv)
 
 		if devenv.Status.Status == "" {
-			r.fetch_nodes_available(ctx, r.Client, l, req, devenv)
+			// r.fetch_nodes_available(ctx, r.Client, l, req, devenv)
 			devenv, err = r.getDevenvByNameAndNamespace(ctx, devenv.Name, devenv.Namespace)
 			if err != nil {
 				l.Error(err, "Failed to fetch Devenv object")
@@ -141,35 +141,29 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			update.Workers = devenv.Status.Workers
 			update.Gpus = devenv.Status.Gpus
 			for i := len(devenv.Status.ControlPlane); i < devenv.Spec.CtrlReplicas; i++ {
-				hash, err := generateRandomHash()
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector)
 				if err != nil {
-					l.Error(err, "Failed to generate random hash")
+					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
-				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Spec.Name + "-control-" + hash
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
 			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
-				hash, err := generateRandomHash()
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
 				if err != nil {
-					l.Error(err, "Failed to generate random hash")
+					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
-				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Spec.Name + "-worker-" + hash
 				update.Workers = append(update.Workers, NodeInfo)
 			}
 
 			if devenv.Spec.GpuReplicas > 0 {
 				for i := len(devenv.Status.Gpus); i < devenv.Spec.GpuReplicas; i++ {
-					hash, err := generateRandomHash()
+					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector)
 					if err != nil {
-						l.Error(err, "Failed to generate random hash")
+						l.Error(err, "Failed to select node")
 						return ctrl.Result{}, err
 					}
-					NodeInfo := tanuudevv1alpha1.NodeInfo{}
-					NodeInfo.Name = devenv.Spec.Name + "-gpu-" + hash
 					update.Gpus = append(update.Gpus, NodeInfo)
 				}
 				for _, node := range devenv.Status.Gpus {
@@ -192,7 +186,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				// TODO create a check for GPU availability
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 			}
-			update.Status = "Pending"
+
 			for _, node := range devenv.Status.ControlPlane {
 				if node.UID == "" {
 					createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "control")
@@ -203,7 +197,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "worker")
 				}
 			}
-
+			update.Status = "Pending"
 			r.Recorder.Event(devenv, "Normal", "Starting", "Devenv provisioned.")
 			if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 				l.Error(err, "Failed to update Devenv status")
@@ -212,6 +206,10 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		// Check if the Devenv is ready to be marked as Ready
+		if devenv.Status.Status == "Scaling" {
+			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
+			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+		}
 
 		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
 		if err != nil {
@@ -240,32 +238,36 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		update.WorkerReplicas = len(devenv.Status.Workers)
 		update.GpuReplicas = len(devenv.Status.Gpus)
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
-		// TODO delete the oldest nodes when scaling down
-		// TODO delete non-pool resources first.
 		if devenv.Spec.WorkerReplicas != update.WorkerReplicas {
 			l.Info("Updating worker replicas")
 			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
-				hash, err := generateRandomHash()
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
 				if err != nil {
-					l.Error(err, "Failed to generate random hash")
+					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
-				// TODO select any existing nodes first
-				NodeInfo := tanuudevv1alpha1.NodeInfo{}
-				NodeInfo.Name = devenv.Spec.Name + "-worker-" + hash
 				update.Workers = append(update.Workers, NodeInfo)
-				update.Status = "Scaling"
 				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 					l.Error(err, "Failed to update Devenv status")
 					return ctrl.Result{}, err
 				}
-				createDevClusterNodes(ctx, r.Client, l, req, devenv, NodeInfo.Name, "worker")
-
+				for _, node := range devenv.Status.Workers {
+					if node.UID == "" {
+						createDevClusterNodes(ctx, r.Client, l, req, devenv, node.Name, "worker")
+					}
+				}
+				update.Status = "Scaling"
+				r.updateDevenvStatusWithRetry(ctx, devenv, update)
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			} else {
+				// Scale down workers
+				update.Status = "Scaling"
+				// TODO delete the oldest nodes when scaling down
+				// TODO delete non-pool resources first, i.e. the pool resources are dedicated full time, so they should be the last to go
 			}
 		}
 		if devenv.Spec.GpuReplicas != update.GpuReplicas {
-			// TODO select any existing nodes first
+			// TODO copy from workers once working
 			l.Info("Updating gpu replicas")
 		}
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
