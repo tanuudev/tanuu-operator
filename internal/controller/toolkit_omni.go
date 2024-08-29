@@ -21,6 +21,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	templ "text/template"
 	"time"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	k8client "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
@@ -195,24 +197,17 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 		typedSpec := item.TypedSpec()
 		typedMetadata := item.Metadata()
 		typedMetadataValue := typedMetadata.Labels()
-		if typedMetadata == nil {
-			return nodeinfo, err // or continue, depending on the context
-		}
-		if typedMetadataValue == nil {
-			return nodeinfo, err // or continue
-		}
-		if typedSpec == nil {
-			return nodeinfo, err // or continue, depending on the context
+		if typedMetadata == nil || typedMetadataValue == nil || typedSpec == nil {
+			continue
 		}
 		typedSpecValue := typedSpec.Value
 		if typedSpecValue == nil {
-			return nodeinfo, err // or continue
+			continue
 		}
-		// labels := typedSpecValue.ImageLabels
-		labels := typedMetadataValue.KV
+		labels := typedMetadataValue.KV.Raw()
 		cluster := typedSpecValue.Cluster
 		if cluster != "" {
-			for key, value := range labels.Raw() {
+			for key, value := range labels {
 				if key == "pool" && value == selector {
 					//TODO fix this to use the correct nodeinfo
 					// The aim here is that we could have a pool of physical nodes that can be used as needed as a pool
@@ -221,6 +216,7 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 					nodeinfo.Name = typedMetadata.ID()
 					nodeinfo.CreatedAt = "pool-" + time.Now().String()
 					nodeinfo.UID = typedMetadata.ID()
+					nodeinfo.Labels = labels
 					l.Info("Found node with pool label " + value)
 					return nodeinfo, nil
 				}
@@ -376,6 +372,52 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 	return false, nil
 
 }
+
+
+func (r *DevenvReconciler) removeNodeFromOmni(ctx context.Context, nodeUID string) error {
+	l := log.FromContext(ctx)
+
+	secret := &corev1.Secret{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	if err != nil {
+		l.Error(err, "Unable to fetch credentials from secret")
+		return err
+	}
+
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	client, err := client.New(url, client.WithServiceAccount(token))
+	if err != nil {
+		l.Error(err, "Failed to create Omni client")
+		return err
+	}
+	st := client.Omni().State()
+
+	machines, err := safe.StateList[*omni.MachineStatus](ctx, st, omni.NewMachineStatus(resources.DefaultNamespace, "").Metadata())
+	if err != nil {
+		l.Error(err, "Failed to retrieve machines from Omni state")
+		return err
+	}
+
+	for iter := machines.Iterator(); iter.Next(); {
+		item := iter.Value()
+		if item.Metadata().ID() == nodeUID {
+			if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
+				l.Error(err, "Failed to delete node from Omni", "Node", nodeUID)
+				return err
+			}
+			l.Info("Successfully removed node from Omni", "Node", nodeUID)
+			return nil
+		}
+	}
+
+	l.Error(nil, "Node not found in Omni state", "Node", nodeUID)
+	return fmt.Errorf("node %s not found in Omni state", nodeUID)
+}
+
+
+
 
 func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 

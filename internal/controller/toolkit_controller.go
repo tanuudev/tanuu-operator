@@ -20,7 +20,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"text/template"
+	"time"
 
 	"github.com/go-logr/logr"
 	_ "github.com/lib/pq"
@@ -91,6 +94,48 @@ type DevenvStatusUpdate struct {
 	WorkerSelector string
 	CtrlSelector   string
 	GpuSelector    string
+}
+
+func removeNodeFromStatus(nodes []tanuudevv1alpha1.NodeInfo, nodeName string) []tanuudevv1alpha1.NodeInfo {
+	updatedNodes := []tanuudevv1alpha1.NodeInfo{}
+	for _, node := range nodes {
+	    if node.Name != nodeName {
+		updatedNodes = append(updatedNodes, node)
+	    }
+	}
+	return updatedNodes
+    }
+
+
+func sortNodesByPriority(nodes []tanuudevv1alpha1.NodeInfo) []tanuudevv1alpha1.NodeInfo {
+	sort.Slice(nodes, func(i, j int) bool {
+		isNodeIPool := isPoolNode(nodes[i])
+		isNodeJPool := isPoolNode(nodes[j])
+
+		if isNodeIPool && !isNodeJPool {
+			return false
+		}
+		if !isNodeIPool && isNodeJPool {
+			return true
+		}
+
+		timeI, errI := time.Parse(time.RFC3339, nodes[i].CreatedAt)
+		timeJ, errJ := time.Parse(time.RFC3339, nodes[j].CreatedAt)
+
+		if errI != nil {
+			return false
+		}
+		if errJ != nil {
+			return true
+		}
+		return timeI.Before(timeJ)
+	})
+
+	return nodes
+}
+
+func isPoolNode(node tanuudevv1alpha1.NodeInfo) bool {
+	return strings.Contains(strings.ToLower(node.Name), "pool")
 }
 
 // updateDevenvStatusWithRetry updates the status of a Devenv object with retry logic.

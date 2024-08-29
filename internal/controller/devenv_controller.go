@@ -71,7 +71,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	err := r.Get(ctx, req.NamespacedName, devenv)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Object not found, return.  Created objects are automatically garbage collected.
+			// Object not found, return.  Deleted objects are automatically garbage collected.
 			return ctrl.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -260,12 +260,41 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				r.updateDevenvStatusWithRetry(ctx, devenv, update)
 				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 			} else {
-				// Scale down workers
+				l.Info("Scaling down worker replicas")
+
+				nodesToRemove := len(update.Workers) - devenv.Spec.WorkerReplicas
+
+				sortedNodes := sortNodesByPriority(devenv.Status.Workers)
+
+				for i := 0; i < nodesToRemove; i++ {
+					nodeToDelete := sortedNodes[i]
+
+					l.Info("Removing node from Omni", "Node", nodeToDelete.Name)
+					if err := r.removeNodeFromOmni(ctx, nodeToDelete.UID); err != nil {
+						l.Error(err, "Failed to remove node from Omni", "Node", nodeToDelete.UID)
+						return ctrl.Result{}, err
+					}
+
+					l.Info("Removing node from Crossplane", "Node", nodeToDelete.Name)
+					if err := r.deleteDevClusterNodes(ctx, devenv, nodeToDelete.Name); err != nil {
+						l.Error(err, "Failed to delete worker node from Crossplane", "Node", nodeToDelete.Name)
+						return ctrl.Result{}, err
+					}
+
+					update.Workers = removeNodeFromStatus(update.Workers, nodeToDelete.Name)
+					l.Info("Deleted worker node", "Node", nodeToDelete.Name)
+
+				}
+
 				update.Status = "Scaling"
-				// TODO delete the oldest nodes when scaling down
-				// TODO delete non-pool resources first, i.e. the pool resources are dedicated full time, so they should be the last to go
+				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
+					l.Error(err, "Failed to update Devenv status")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
 			}
 		}
+		
 		if devenv.Spec.GpuReplicas != update.GpuReplicas {
 			// TODO copy from workers once working
 			l.Info("Updating gpu replicas")
