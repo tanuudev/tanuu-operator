@@ -42,16 +42,17 @@ import (
 )
 
 type Environment struct {
-	Name                  string
-	ControlPlane          string
-	Workers               string
-	Gpus                  string
-	TailScaleClientID     string
-	TailScaleClientSecret string
-	GitHubToken           string
-	Gpu                   bool
-	K8sVersion            string
-	TalosVersion          string
+	Name                    string
+	ControlPlane            string
+	Workers                 string
+	Gpus                    string
+	TailScaleClientID       string
+	TailScaleClientSecret   string
+	GitHubToken             string
+	Gpu                     bool
+	K8sVersion              string
+	TalosVersion            string
+	OnePasswordConnectToken string
 }
 
 var clustertempl *templ.Template
@@ -287,6 +288,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 	environment.TailScaleClientID = string(secret.Data["TailScaleClientID"])
 	environment.TailScaleClientSecret = string(secret.Data["TailScaleClientSecret"])
 	environment.GitHubToken = string(secret.Data["GitHubToken"])
+	environment.OnePasswordConnectToken = string(secret.Data["OnePasswordConnectToken"])
 	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
 	// l.Info(clustertempl.Root.String())
 	err = clustertempl.Execute(&buf, environment)
