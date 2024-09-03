@@ -35,6 +35,7 @@ type NodeInfo struct {
 	Name      string `json:"name"`
 	UID       string `json:"uid"`
 	CreatedAt string `json:"createdAt"`
+	Labels    map[string]string `json:"labels"`
 }
 
 // DevenvSpec defines the desired state of Devenv

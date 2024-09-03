@@ -106,6 +106,16 @@ func removeNodeFromStatus(nodes []tanuudevv1alpha1.NodeInfo, nodeName string) []
 	return updatedNodes
     }
 
+func (r *DevenvReconciler) finalizeNodeDeletion(ctx context.Context, devenv *tanuudevv1alpha1.Devenv) error {
+    for _, nodeName := range r.PendingNodesForDeletion {
+        if err := r.deleteDevClusterNodes(ctx, devenv, nodeName); err != nil {
+            return err
+        }
+    }
+    r.PendingNodesForDeletion = []string{}
+    return nil
+}
+
 
 func sortNodesByPriority(nodes []tanuudevv1alpha1.NodeInfo) []tanuudevv1alpha1.NodeInfo {
 	sort.Slice(nodes, func(i, j int) bool {

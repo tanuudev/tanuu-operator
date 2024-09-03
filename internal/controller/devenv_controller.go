@@ -39,6 +39,7 @@ type DevenvReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	PendingNodesForDeletion []string
 }
 
 // generateRandomHash generates a random 4-character hash
@@ -234,6 +235,9 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
+		if err := r.finalizeNodeDeletion(ctx, devenv); err != nil {
+			return ctrl.Result{}, err
+		    }
 		update := CopyDevenvUpdater(*devenv)
 		update.WorkerReplicas = len(devenv.Status.Workers)
 		update.GpuReplicas = len(devenv.Status.Gpus)
@@ -274,15 +278,11 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 						l.Error(err, "Failed to remove node from Omni", "Node", nodeToDelete.UID)
 						return ctrl.Result{}, err
 					}
+					devenv.Status.Workers = removeNodeFromStatus(devenv.Status.Workers, nodeToDelete.Name)
 
-					l.Info("Removing node from Crossplane", "Node", nodeToDelete.Name)
-					if err := r.deleteDevClusterNodes(ctx, devenv, nodeToDelete.Name); err != nil {
-						l.Error(err, "Failed to delete worker node from Crossplane", "Node", nodeToDelete.Name)
-						return ctrl.Result{}, err
-					}
+					r.PendingNodesForDeletion = append(r.PendingNodesForDeletion, nodeToDelete.Name)
 
-					update.Workers = removeNodeFromStatus(update.Workers, nodeToDelete.Name)
-					l.Info("Deleted worker node", "Node", nodeToDelete.Name)
+					
 
 				}
 
