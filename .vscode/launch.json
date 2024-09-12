@@ -10,6 +10,8 @@
             "request": "launch",
             "mode": "auto",
             "program": "cmd/main.go",
+            "dlvFlags": ["--check-go-version=false"],
+            "env": {"KUBECONFIG": "/Users/andy/.kube/config"},
         }
     ]
 }

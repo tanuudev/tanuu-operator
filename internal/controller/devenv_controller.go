@@ -140,30 +140,34 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			update.ControlPlane = devenv.Status.ControlPlane
 			update.Workers = devenv.Status.Workers
 			update.Gpus = devenv.Status.Gpus
+			nodelist := []string{}
 			for i := len(devenv.Status.ControlPlane); i < devenv.Spec.CtrlReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector, nodelist)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
 			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.Workers = append(update.Workers, NodeInfo)
 			}
 
 			if devenv.Spec.GpuReplicas > 0 {
 				for i := len(devenv.Status.Gpus); i < devenv.Spec.GpuReplicas; i++ {
-					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector)
+					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector, nodelist)
 					if err != nil {
 						l.Error(err, "Failed to select node")
 						return ctrl.Result{}, err
 					}
+					nodelist = append(nodelist, NodeInfo.UID)
 					update.Gpus = append(update.Gpus, NodeInfo)
 				}
 				for _, node := range devenv.Status.Gpus {
@@ -240,12 +244,14 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
 		if devenv.Spec.WorkerReplicas != update.WorkerReplicas {
 			l.Info("Updating worker replicas")
+			nodelist := []string{}
 			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.Workers = append(update.Workers, NodeInfo)
 				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 					l.Error(err, "Failed to update Devenv status")

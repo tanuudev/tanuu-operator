@@ -22,8 +22,10 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -57,12 +59,43 @@ func parseConfigString(config string) map[string]interface{} {
 
 func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodename string, nodetype string) {
 	nodetypeselector := ""
+	// Define the ConfigMap object
+	tanuuConfigMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	configmapname := types.NamespacedName{
+		Namespace: "tanuu-system",
+		Name:      "tanuu-operator",
+	}
+	// Get the ConfigMap
+	if err := client.Get(ctx, configmapname, tanuuConfigMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return
+	}
+	// Extract the configuration string
+	defalutWorkerSelector, exists := tanuuConfigMap.Data["default.workerSelector"]
+	defaultCtrlSelector, exists := tanuuConfigMap.Data["default.ctrlSelector"]
+	defaultGpuSelector, exists := tanuuConfigMap.Data["default.gpuSelector"]
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
 	if nodetype == "worker" {
-		nodetypeselector = devenv.Spec.WorkerSelector
+		if devenv.Spec.WorkerSelector == "" {
+			nodetypeselector = defalutWorkerSelector
+		} else {
+			nodetypeselector = devenv.Spec.WorkerSelector
+		}
 	} else if nodetype == "control" {
-		nodetypeselector = devenv.Spec.CtrlSelector
+		if devenv.Spec.CtrlSelector == "" {
+			nodetypeselector = defaultCtrlSelector
+		} else {
+			nodetypeselector = devenv.Spec.CtrlSelector
+		}
 	} else if nodetype == "gpu" {
-		nodetypeselector = devenv.Spec.GpuSelector
+		if devenv.Spec.GpuSelector == "" {
+			nodetypeselector = defaultGpuSelector
+		} else {
+			nodetypeselector = devenv.Spec.GpuSelector
+		}
 	}
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
