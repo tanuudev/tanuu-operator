@@ -69,6 +69,8 @@ spec:
                 type: string
               talosVersion:
                 type: string
+              templateCM:
+                type: string
               workerReplicas:
                 type: integer
               workerSelector:

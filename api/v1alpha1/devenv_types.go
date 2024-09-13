@@ -55,6 +55,7 @@ type DevenvSpec struct {
 	CtrlSelector   string     `json:"ctrlSelector,omitempty"`
 	GpuSelector    string     `json:"gpuSelector,omitempty"`
 	Zone           string     `json:"zone,omitempty"`
+	TemplateCM     string     `json:"templateCM,omitempty"`
 }
 
 // DevenvStatus defines the observed state of Devenv

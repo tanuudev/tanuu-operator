@@ -174,7 +174,7 @@ func (r *DevenvReconciler) createKubeConfig(ctx context.Context, ctrlclient k8cl
 	// Define the namespaced name to look up the ConfigMap
 	namespacedName := types.NamespacedName{
 		Namespace: "tanuu-system",
-		Name:      "cluster",
+		Name:      "tanuu-operator",
 	}
 	// Get the ConfigMap
 	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
