@@ -43,19 +43,26 @@ type DevenvSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
-	Name           string     `json:"name"`
-	CloudProvider  string     `json:"cloudProvider"`
-	TalosVersion   string     `json:"talosVersion"`
-	K8sVersion     string     `json:"k8sVersion"`
-	Size           DevenvSize `json:"size,omitempty"`
-	WorkerReplicas int        `json:"workerReplicas"`
-	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
-	GpuReplicas    int        `json:"gpuReplicas"`
-	WorkerSelector string     `json:"workerSelector,omitempty"`
-	CtrlSelector   string     `json:"ctrlSelector,omitempty"`
-	GpuSelector    string     `json:"gpuSelector,omitempty"`
-	Zone           string     `json:"zone,omitempty"`
-	TemplateCM     string     `json:"templateCM,omitempty"`
+	Name              string     `json:"name"`
+	CloudProvider     string     `json:"cloudProvider"`
+	TalosVersion      string     `json:"talosVersion"`
+	K8sVersion        string     `json:"k8sVersion"`
+	Size              DevenvSize `json:"size,omitempty"`
+	WorkerReplicas    int        `json:"workerReplicas"`
+	CtrlReplicas      int        `json:"ctrlReplicas,omitempty"`
+	GpuReplicas       int        `json:"gpuReplicas"`
+	WorkerSelector    string     `json:"workerSelector,omitempty"`
+	CtrlSelector      string     `json:"ctrlSelector,omitempty"`
+	StorageSelector   string     `json:"storageSelector,omitempty"`
+	GpuSelector       string     `json:"gpuSelector,omitempty"`
+	Zone              string     `json:"zone,omitempty"`
+	TemplateCM        string     `json:"templateCM,omitempty"`
+	ProviderConfig    string     `json:"providerConfig,omitempty"`
+	CtrlMachineType   string     `json:"ctrlMachineType,omitempty"`
+	WorkerMachineType string     `json:"workerMachineType,omitempty"`
+	GpuMachineType    string     `json:"gpuMachineType,omitempty"`
+	ServiceAccount    string     `json:"serviceAccount,omitempty"`
+	Subnetwork        string     `json:"subnetwork,omitempty"`
 }
 
 // DevenvStatus defines the observed state of Devenv

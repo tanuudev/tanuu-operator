@@ -51,9 +51,13 @@ spec:
             properties:
               cloudProvider:
                 type: string
+              ctrlMachineType:
+                type: string
               ctrlReplicas:
                 type: integer
               ctrlSelector:
+                type: string
+              gpuMachineType:
                 type: string
               gpuReplicas:
                 type: integer
@@ -65,11 +69,21 @@ spec:
                 description: Foo is an example field of Devenv. Edit devenv_types.go
                   to remove/update
                 type: string
+              providerConfig:
+                type: string
+              serviceAccount:
+                type: string
               size:
+                type: string
+              storageSelector:
+                type: string
+              subnetwork:
                 type: string
               talosVersion:
                 type: string
               templateCM:
+                type: string
+              workerMachineType:
                 type: string
               workerReplicas:
                 type: integer
