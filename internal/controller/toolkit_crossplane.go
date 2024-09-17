@@ -59,6 +59,7 @@ func parseConfigString(config string) map[string]interface{} {
 
 func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodename string, nodetype string) {
 	nodetypeselector := ""
+	machineType := ""
 	// Define the ConfigMap object
 	tanuuConfigMap := &corev1.ConfigMap{}
 	// Define the namespaced name to look up the ConfigMap
@@ -75,22 +76,51 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 	defalutWorkerSelector, exists := tanuuConfigMap.Data["default.workerSelector"]
 	defaultCtrlSelector, exists := tanuuConfigMap.Data["default.ctrlSelector"]
 	defaultGpuSelector, exists := tanuuConfigMap.Data["default.gpuSelector"]
+	defaultTalosVersion, exists := tanuuConfigMap.Data["default.talosVersion"]
+	defaultCtrlMachineType, exists := tanuuConfigMap.Data["default.ctrlMachineType"]
+	defaultWorkerMachineType, exists := tanuuConfigMap.Data["default.workerMachineType"]
+	defaultGpuMachineType, exists := tanuuConfigMap.Data["default.gpuMachineType"]
+	defaultServiceAccount, exists := tanuuConfigMap.Data["default.serviceAccount"]
+	defaultSubnetwork, exists := tanuuConfigMap.Data["default.subnetwork"]
+
 	if !exists {
 		panic("Specified key does not exist in the ConfigMap")
 	}
+	if devenv.Spec.Subnetwork == "" {
+		devenv.Spec.Subnetwork = defaultSubnetwork
+	}
+	if devenv.Spec.ServiceAccount == "" {
+		devenv.Spec.ServiceAccount = defaultServiceAccount
+	}
+	if devenv.Spec.TalosVersion == "" {
+		devenv.Spec.TalosVersion = defaultTalosVersion
+	}
+	if devenv.Spec.ProviderConfig == "" {
+		devenv.Spec.ProviderConfig = "default"
+	}
+
 	if nodetype == "worker" {
+		if devenv.Spec.WorkerMachineType == "" {
+			machineType = defaultWorkerMachineType
+		}
 		if devenv.Spec.WorkerSelector == "" {
 			nodetypeselector = defalutWorkerSelector
 		} else {
 			nodetypeselector = devenv.Spec.WorkerSelector
 		}
 	} else if nodetype == "control" {
+		if devenv.Spec.CtrlMachineType == "" {
+			machineType = defaultCtrlMachineType
+		}
 		if devenv.Spec.CtrlSelector == "" {
 			nodetypeselector = defaultCtrlSelector
 		} else {
 			nodetypeselector = devenv.Spec.CtrlSelector
 		}
 	} else if nodetype == "gpu" {
+		if devenv.Spec.GpuMachineType == "" {
+			machineType = defaultGpuMachineType
+		}
 		if devenv.Spec.GpuSelector == "" {
 			nodetypeselector = defaultGpuSelector
 		} else {
@@ -99,7 +129,7 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 	}
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "tanuu.dev/v1alpha1",
+			"apiVersion": "tanuu.dev/v1beta1",
 			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
 				"name":      nodename,
@@ -112,7 +142,12 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 						"nodetype": nodetypeselector},
 				},
 				"parameters": map[string]interface{}{
-					"zone": devenv.Spec.Zone},
+					"zone":           devenv.Spec.Zone,
+					"providerConfig": devenv.Spec.ProviderConfig,
+					"talosVersion":   devenv.Spec.TalosVersion,
+					"subnetwork":     devenv.Spec.Subnetwork,
+					"serviceAccount": devenv.Spec.ServiceAccount,
+					"machineType":    machineType},
 			},
 		},
 	}
@@ -135,7 +170,7 @@ func (r *DevenvReconciler) deleteDevClusterNodes(ctx context.Context, devenv *ta
 	// Define the custom resource to delete
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "tanuu.dev/v1alpha1",
+			"apiVersion": "tanuu.dev/v1beta1",
 			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
 				"name":      nodename,

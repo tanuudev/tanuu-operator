@@ -142,7 +142,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			update.Gpus = devenv.Status.Gpus
 			nodelist := []string{}
 			for i := len(devenv.Status.ControlPlane); i < devenv.Spec.CtrlReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector, nodelist)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
@@ -151,7 +151,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
 			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
@@ -162,7 +162,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 			if devenv.Spec.GpuReplicas > 0 {
 				for i := len(devenv.Status.Gpus); i < devenv.Spec.GpuReplicas; i++ {
-					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector, nodelist)
+					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector, nodelist, devenv.Spec.StorageSelector)
 					if err != nil {
 						l.Error(err, "Failed to select node")
 						return ctrl.Result{}, err
@@ -246,7 +246,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			l.Info("Updating worker replicas")
 			nodelist := []string{}
 			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err

@@ -51,32 +51,92 @@ spec:
             properties:
               cloudProvider:
                 type: string
+                x-kubernetes-validations:
+                - message: CloudProvider is immutable
+                  rule: self == oldSelf
+              ctrlMachineType:
+                type: string
+                x-kubernetes-validations:
+                - message: CtrlMachineType is immutable
+                  rule: self == oldSelf
               ctrlReplicas:
                 type: integer
               ctrlSelector:
                 type: string
+                x-kubernetes-validations:
+                - message: CtrlSelector is immutable
+                  rule: self == oldSelf
+              gpuMachineType:
+                type: string
+                x-kubernetes-validations:
+                - message: GpuMachineType is immutable
+                  rule: self == oldSelf
               gpuReplicas:
                 type: integer
               gpuSelector:
                 type: string
+                x-kubernetes-validations:
+                - message: GpuSelector is immutable
+                  rule: self == oldSelf
               k8sVersion:
                 type: string
+                x-kubernetes-validations:
+                - message: K8sVersion is immutable
+                  rule: self == oldSelf
               name:
-                description: Foo is an example field of Devenv. Edit devenv_types.go
-                  to remove/update
                 type: string
+                x-kubernetes-validations:
+                - message: Name is immutable
+                  rule: self == oldSelf
+              providerConfig:
+                type: string
+                x-kubernetes-validations:
+                - message: ProviderConfig is immutable
+                  rule: self == oldSelf
+              serviceAccount:
+                type: string
+                x-kubernetes-validations:
+                - message: ServiceAccount is immutable
+                  rule: self == oldSelf
               size:
                 type: string
+                x-kubernetes-validations:
+                - message: Size is immutable
+                  rule: self == oldSelf
+              storageSelector:
+                type: string
+                x-kubernetes-validations:
+                - message: StorageSelector is immutable
+                  rule: self == oldSelf
+              subnetwork:
+                type: string
+                x-kubernetes-validations:
+                - message: Subnetwork is immutable
+                  rule: self == oldSelf
               talosVersion:
                 type: string
               templateCM:
                 type: string
+                x-kubernetes-validations:
+                - message: TemplateCM is immutable
+                  rule: self == oldSelf
+              workerMachineType:
+                type: string
+                x-kubernetes-validations:
+                - message: WorkerMachineType is immutable
+                  rule: self == oldSelf
               workerReplicas:
                 type: integer
               workerSelector:
                 type: string
+                x-kubernetes-validations:
+                - message: WorkerSelector is immutable
+                  rule: self == oldSelf
               zone:
                 type: string
+                x-kubernetes-validations:
+                - message: Zone is immutable
+                  rule: self == oldSelf
             required:
             - cloudProvider
             - gpuReplicas

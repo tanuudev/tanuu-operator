@@ -165,7 +165,7 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 }
 
-func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_name string, group string, selector string, nodelist []string) (tanuudevv1alpha1.NodeInfo, error) {
+func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_name string, group string, selector string, nodelist []string, storageSelector string) (tanuudevv1alpha1.NodeInfo, error) {
 	secret := &corev1.Secret{}
 	nodeinfo := tanuudevv1alpha1.NodeInfo{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
@@ -225,7 +225,11 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 		cluster := typedSpecValue.Cluster
 		poolselector := "none"
 		if group == "control" || group == "worker" {
-			poolselector = "base"
+			if storageSelector != "" {
+				poolselector = storageSelector
+			} else {
+				poolselector = "base"
+			}
 		} else if group == "gpu" {
 			poolselector = "gpu"
 		}

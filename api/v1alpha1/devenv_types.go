@@ -42,20 +42,43 @@ type DevenvSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
-	Name           string     `json:"name"`
-	CloudProvider  string     `json:"cloudProvider"`
-	TalosVersion   string     `json:"talosVersion"`
-	K8sVersion     string     `json:"k8sVersion"`
-	Size           DevenvSize `json:"size,omitempty"`
-	WorkerReplicas int        `json:"workerReplicas"`
-	CtrlReplicas   int        `json:"ctrlReplicas,omitempty"`
-	GpuReplicas    int        `json:"gpuReplicas"`
-	WorkerSelector string     `json:"workerSelector,omitempty"`
-	CtrlSelector   string     `json:"ctrlSelector,omitempty"`
-	GpuSelector    string     `json:"gpuSelector,omitempty"`
-	Zone           string     `json:"zone,omitempty"`
-	TemplateCM     string     `json:"templateCM,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Name is immutable"
+	Name string `json:"name"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="CloudProvider is immutable"
+	CloudProvider string `json:"cloudProvider"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="K8sVersion is immutable"
+	K8sVersion string `json:"k8sVersion"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="WorkerSelector is immutable"
+	WorkerSelector string `json:"workerSelector,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="CtrlSelector is immutable"
+	CtrlSelector string `json:"ctrlSelector,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="StorageSelector is immutable"
+	StorageSelector string `json:"storageSelector,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="GpuSelector is immutable"
+	GpuSelector string `json:"gpuSelector,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Zone is immutable"
+	Zone string `json:"zone,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TemplateCM is immutable"
+	TemplateCM string `json:"templateCM,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ProviderConfig is immutable"
+	ProviderConfig string `json:"providerConfig,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="CtrlMachineType is immutable"
+	CtrlMachineType string `json:"ctrlMachineType,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="WorkerMachineType is immutable"
+	WorkerMachineType string `json:"workerMachineType,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="GpuMachineType is immutable"
+	GpuMachineType string `json:"gpuMachineType,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ServiceAccount is immutable"
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Subnetwork is immutable"
+	Subnetwork string `json:"subnetwork,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Size is immutable"
+	Size DevenvSize `json:"size,omitempty"`
+
+	TalosVersion   string `json:"talosVersion"`
+	WorkerReplicas int    `json:"workerReplicas"`
+	CtrlReplicas   int    `json:"ctrlReplicas,omitempty"`
+	GpuReplicas    int    `json:"gpuReplicas"`
 }
 
 // DevenvStatus defines the observed state of Devenv
