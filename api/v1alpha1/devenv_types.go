@@ -43,26 +43,43 @@ type DevenvSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of Devenv. Edit devenv_types.go to remove/update
-	Name              string     `json:"name"`
-	CloudProvider     string     `json:"cloudProvider"`
-	TalosVersion      string     `json:"talosVersion"`
-	K8sVersion        string     `json:"k8sVersion"`
-	Size              DevenvSize `json:"size,omitempty"`
-	WorkerReplicas    int        `json:"workerReplicas"`
-	CtrlReplicas      int        `json:"ctrlReplicas,omitempty"`
-	GpuReplicas       int        `json:"gpuReplicas"`
-	WorkerSelector    string     `json:"workerSelector,omitempty"`
-	CtrlSelector      string     `json:"ctrlSelector,omitempty"`
-	StorageSelector   string     `json:"storageSelector,omitempty"`
-	GpuSelector       string     `json:"gpuSelector,omitempty"`
-	Zone              string     `json:"zone,omitempty"`
-	TemplateCM        string     `json:"templateCM,omitempty"`
-	ProviderConfig    string     `json:"providerConfig,omitempty"`
-	CtrlMachineType   string     `json:"ctrlMachineType,omitempty"`
-	WorkerMachineType string     `json:"workerMachineType,omitempty"`
-	GpuMachineType    string     `json:"gpuMachineType,omitempty"`
-	ServiceAccount    string     `json:"serviceAccount,omitempty"`
-	Subnetwork        string     `json:"subnetwork,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	Name string `json:"name"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	CloudProvider string `json:"cloudProvider"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	K8sVersion string `json:"k8sVersion"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	WorkerSelector string `json:"workerSelector,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	CtrlSelector string `json:"ctrlSelector,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	StorageSelector string `json:"storageSelector,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	GpuSelector string `json:"gpuSelector,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	Zone string `json:"zone,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	TemplateCM string `json:"templateCM,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	ProviderConfig string `json:"providerConfig,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	CtrlMachineType string `json:"ctrlMachineType,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	WorkerMachineType string `json:"workerMachineType,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	GpuMachineType string `json:"gpuMachineType,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	Subnetwork string `json:"subnetwork,omitempty"`
+	// +kubebuilder:validation:X-Kubernetes-Immutable=true
+	Size DevenvSize `json:"size,omitempty"`
+
+	TalosVersion   string `json:"talosVersion"`
+	WorkerReplicas int    `json:"workerReplicas"`
+	CtrlReplicas   int    `json:"ctrlReplicas,omitempty"`
+	GpuReplicas    int    `json:"gpuReplicas"`
 }
 
 // DevenvStatus defines the observed state of Devenv
