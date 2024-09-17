@@ -224,12 +224,15 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 		// labels := typedMetadataValue.KV
 		cluster := typedSpecValue.Cluster
 		poolselector := "none"
-		if group == "control" || group == "worker" {
+		if group == "worker" {
 			if storageSelector != "" {
 				poolselector = storageSelector
 			} else {
 				poolselector = "base"
 			}
+		} else if group == "control" {
+			poolselector = "base"
+
 		} else if group == "gpu" {
 			poolselector = "gpu"
 		}

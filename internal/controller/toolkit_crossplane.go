@@ -20,6 +20,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -32,6 +33,17 @@ import (
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
+
+// stripNonDigits removes all non-digit characters from the input string.
+func stripNonDigits(input string) string {
+	var builder strings.Builder
+	for _, char := range input {
+		if unicode.IsDigit(char) {
+			builder.WriteRune(char)
+		}
+	}
+	return builder.String()
+}
 
 func parseConfigString(config string) map[string]interface{} {
 	lines := strings.Split(config, "\n")
@@ -144,7 +156,7 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 				"parameters": map[string]interface{}{
 					"zone":           devenv.Spec.Zone,
 					"providerConfig": devenv.Spec.ProviderConfig,
-					"talosVersion":   devenv.Spec.TalosVersion,
+					"talosVersion":   stripNonDigits(devenv.Spec.TalosVersion),
 					"subnetwork":     devenv.Spec.Subnetwork,
 					"serviceAccount": devenv.Spec.ServiceAccount,
 					"machineType":    machineType},
