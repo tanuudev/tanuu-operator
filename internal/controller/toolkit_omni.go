@@ -237,13 +237,12 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 			poolselector = "gpu"
 		}
 
-		if cluster == "" && strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector) {
+		if cluster == "" && (storageSelector != "" || strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool")) && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector) {
 			nodeinfo.Name = typedSpecValue.Network.Hostname
 			nodeinfo.CreatedAt = "pool-" + time.Now().String()
 			nodeinfo.UID = typedMetadata.ID()
 			l.Info("Found node in pool ")
 			return nodeinfo, nil
-
 		}
 
 	}
@@ -458,7 +457,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 			}
 		}
 		for _, node := range devenv.Status.Workers {
-			if item.Metadata().ID() == node.UID && !strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") {
+			if item.Metadata().ID() == node.UID && !(strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") || strings.Contains(item.TypedSpec().Value.Network.Hostname, "static")) {
 				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
 				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
 					return err
