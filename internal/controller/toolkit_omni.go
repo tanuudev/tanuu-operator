@@ -236,13 +236,28 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 		} else if group == "gpu" {
 			poolselector = "gpu"
 		}
+		if item.TypedSpec().Value.Network == nil || item.TypedSpec().Value.Network.Hostname == "" {
+			continue
+		}
+		poolNode := strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector)
+		staticNode := storageSelector != "" && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector)
 
-		if cluster == "" && (storageSelector != "" || strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool")) && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector) {
-			nodeinfo.Name = typedSpecValue.Network.Hostname
-			nodeinfo.CreatedAt = "pool-" + time.Now().String()
-			nodeinfo.UID = typedMetadata.ID()
-			l.Info("Found node in pool ")
-			return nodeinfo, nil
+		if cluster == "" {
+			if group != "worker" {
+				if poolNode {
+					nodeinfo.Name = typedSpecValue.Network.Hostname
+					nodeinfo.CreatedAt = "pool-" + time.Now().String()
+					nodeinfo.UID = typedMetadata.ID()
+					l.Info("Found node in pool ")
+					return nodeinfo, nil
+				}
+			} else if staticNode || (poolNode && storageSelector == "") {
+				nodeinfo.Name = typedSpecValue.Network.Hostname
+				nodeinfo.CreatedAt = "static-" + time.Now().String()
+				nodeinfo.UID = typedMetadata.ID()
+				l.Info("Found node in pool ")
+				return nodeinfo, nil
+			}
 		}
 
 	}

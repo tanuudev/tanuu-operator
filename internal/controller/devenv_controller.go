@@ -188,7 +188,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if devenv.Status.Status == "GPUPending" {
 			if devenv.Spec.GpuReplicas > 0 {
 				// TODO create a check for GPU availability
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 			}
 
 			for _, node := range devenv.Status.ControlPlane {
@@ -212,7 +212,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Check if the Devenv is ready to be marked as Ready
 		if devenv.Status.Status == "Scaling" {
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 
 		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
@@ -228,13 +228,13 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				l.Error(err, "Failed to update Devenv status to Ready")
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		} else if devenv.Status.Status == "Pending" {
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		} else if devenv.Status.Status == "Starting" {
 			r.create_omni_cluster(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
@@ -264,7 +264,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				}
 				update.Status = "Scaling"
 				r.updateDevenvStatusWithRetry(ctx, devenv, update)
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 			} else {
 				// Scale down workers
 				update.Status = "Scaling"
