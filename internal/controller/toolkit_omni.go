@@ -44,23 +44,24 @@ import (
 )
 
 type Environment struct {
-	Name                  string
-	ControlPlane          string
-	Workers               string
-	Gpus                  string
-	TailScaleClientID     string
-	TailScaleClientSecret string
-	GitHubToken           string
-	Gpu                   bool
-	K8sVersion            string
-	TalosVersion          string
+	Name                    string
+	ControlPlane            string
+	Workers                 string
+	Gpus                    string
+	TailScaleClientID       string
+	TailScaleClientSecret   string
+	GitHubToken             string
+	Gpu                     bool
+	K8sVersion              string
+	TalosVersion            string
+	OnePasswordConnectToken string
 }
 
 var clustertempl *templ.Template
 
 func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
@@ -166,10 +167,10 @@ func (r *DevenvReconciler) fetch_omni_nodes(ctx context.Context, ctrlclient k8cl
 
 }
 
-func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_name string, group string, selector string) (tanuudevv1alpha1.NodeInfo, error) {
+func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_name string, group string, selector string, nodelist []string, storageSelector string) (tanuudevv1alpha1.NodeInfo, error) {
 	secret := &corev1.Secret{}
 	nodeinfo := tanuudevv1alpha1.NodeInfo{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return nodeinfo, err
@@ -204,22 +205,54 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 		if typedSpecValue == nil {
 			continue
 		}
-		labels := typedMetadataValue.KV.Raw()
+		found := false
+		for _, nodeID := range nodelist {
+			if typedMetadata.ID() == nodeID {
+				found = true
+				break
+			}
+		}
+
+		if found {
+			continue
+		}
+		// labels := typedSpecValue.ImageLabels
+		// labels := typedMetadataValue.KV
 		cluster := typedSpecValue.Cluster
-		if cluster != "" {
-			for key, value := range labels {
-				if key == "pool" && value == selector {
-					//TODO fix this to use the correct nodeinfo
-					// The aim here is that we could have a pool of physical nodes that can be used as needed as a pool
-					// for the devenv. This is useful for example when we have a pool of nodes with GPUs.
-					// Selection here might work, needs to check if the node is already in use, is connected and available, and matches the selector.
-					nodeinfo.Name = typedMetadata.ID()
+		poolselector := "none"
+		if group == "worker" {
+			if storageSelector != "" {
+				poolselector = storageSelector
+			} else {
+				poolselector = "base"
+			}
+		} else if group == "control" {
+			poolselector = "base"
+
+		} else if group == "gpu" {
+			poolselector = "gpu"
+		}
+		if item.TypedSpec().Value.Network == nil || item.TypedSpec().Value.Network.Hostname == "" {
+			continue
+		}
+		poolNode := strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector)
+		staticNode := storageSelector != "" && strings.Contains(item.TypedSpec().Value.Network.Hostname, poolselector)
+
+		if cluster == "" {
+			if group != "worker" {
+				if poolNode {
+					nodeinfo.Name = typedSpecValue.Network.Hostname
 					nodeinfo.CreatedAt = "pool-" + time.Now().String()
 					nodeinfo.UID = typedMetadata.ID()
-					nodeinfo.Labels = labels
-					l.Info("Found node with pool label " + value)
+					l.Info("Found node in pool ")
 					return nodeinfo, nil
 				}
+			} else if staticNode || (poolNode && storageSelector == "") {
+				nodeinfo.Name = typedSpecValue.Network.Hostname
+				nodeinfo.CreatedAt = "static-" + time.Now().String()
+				nodeinfo.UID = typedMetadata.ID()
+				l.Info("Found node in pool ")
+				return nodeinfo, nil
 			}
 		}
 
@@ -235,30 +268,51 @@ func (r *DevenvReconciler) select_nodes(ctx context.Context, l logr.Logger, env_
 
 func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 	secret := &corev1.Secret{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
 	}
 	// Define the ConfigMap object
-	configMap := &corev1.ConfigMap{}
+	tanuuConfigMap := &corev1.ConfigMap{}
 	// Define the namespaced name to look up the ConfigMap
-	namespacedName := types.NamespacedName{
+	configmapname := types.NamespacedName{
 		Namespace: "tanuu-system",
-		Name:      "cluster",
+		Name:      "tanuu-operator",
 	}
 	// Get the ConfigMap
-	if err := ctrlclient.Get(ctx, namespacedName, configMap); err != nil {
+	if err := ctrlclient.Get(ctx, configmapname, tanuuConfigMap); err != nil {
 		l.Error(err, "Failed to get ConfigMap")
 		return err
 	}
 
 	// Extract the configuration string
-	configString, exists := configMap.Data["cluster.tmpl"]
+	clusterconfig, exists := tanuuConfigMap.Data["default.configmap"]
 	if !exists {
 		panic("Specified key does not exist in the ConfigMap")
 	}
+	if devenv.Spec.TemplateCM != "" {
+		clusterconfig = devenv.Spec.TemplateCM
+	}
+	clusterConfigMap := &corev1.ConfigMap{}
+	// TODO Order is borked here... reading before reading should be done... :( fix this)
+	// TODO read from the tanuu-operator configmap to see which template to use
+	// Define the namespaced name to look up the ConfigMap
+	namespacedName := types.NamespacedName{
+		Namespace: "tanuu-system",
+		Name:      clusterconfig,
+	}
+	// Get the ConfigMap
+	if err := ctrlclient.Get(ctx, namespacedName, clusterConfigMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return err
+	}
 
+	// Extract the configuration string
+	configString, exists := clusterConfigMap.Data["cluster.tmpl"]
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
 	environment := Environment{}
 	var buf bytes.Buffer
 	environment.Name = devenv.Spec.Name
@@ -283,6 +337,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 	environment.TailScaleClientID = string(secret.Data["TailScaleClientID"])
 	environment.TailScaleClientSecret = string(secret.Data["TailScaleClientSecret"])
 	environment.GitHubToken = string(secret.Data["GitHubToken"])
+	environment.OnePasswordConnectToken = string(secret.Data["OnePasswordConnectToken"])
 	clustertempl = templ.Must(templ.New("cluster").Parse(configString))
 	// l.Info(clustertempl.Root.String())
 	err = clustertempl.Execute(&buf, environment)
@@ -326,7 +381,7 @@ func (r *DevenvReconciler) create_omni_cluster(ctx context.Context, ctrlclient k
 
 func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) (bool, error) {
 	secret := &corev1.Secret{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return false, err
@@ -373,7 +428,6 @@ func (r *DevenvReconciler) check_omni_cluster(ctx context.Context, ctrlclient k8
 
 }
 
-
 func (r *DevenvReconciler) removeNodeFromOmni(ctx context.Context, nodeUID string) error {
 	l := log.FromContext(ctx)
 
@@ -416,13 +470,10 @@ func (r *DevenvReconciler) removeNodeFromOmni(ctx context.Context, nodeUID strin
 	return fmt.Errorf("node %s not found in Omni state", nodeUID)
 }
 
-
-
-
 func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k8client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv) error {
 
 	secret := &corev1.Secret{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: "omni-creds", Namespace: "tanuu-system"}, secret)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: "tanuu-operator", Namespace: "tanuu-system"}, secret)
 	if err != nil {
 		l.Error(err, "unable to fetch creds from secret")
 		return err
@@ -451,7 +502,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 		item := iter.Value()
 		// loop through the devenv controplane nodes and delete them
 		for _, node := range devenv.Status.ControlPlane {
-			if item.Metadata().ID() == node.UID {
+			if item.Metadata().ID() == node.UID && !strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") {
 				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
 				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
 					return err
@@ -459,7 +510,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 			}
 		}
 		for _, node := range devenv.Status.Workers {
-			if item.Metadata().ID() == node.UID {
+			if item.Metadata().ID() == node.UID && !(strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") || strings.Contains(item.TypedSpec().Value.Network.Hostname, "static")) {
 				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
 				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
 					return err
@@ -467,7 +518,7 @@ func (r *DevenvReconciler) delete_omni_cluster(ctx context.Context, ctrlclient k
 			}
 		}
 		for _, node := range devenv.Status.Gpus {
-			if item.Metadata().ID() == node.UID {
+			if item.Metadata().ID() == node.UID && !strings.Contains(item.TypedSpec().Value.Network.Hostname, "pool") {
 				// if _, err = st.Teardown(ctx, item.Metadata()); err != nil {
 				if _, err = st.Teardown(ctx, resource.NewMetadata(item.ResourceDefinition().DefaultNamespace, "Links.omni.sidero.dev", item.Metadata().ID(), resource.VersionUndefined)); err != nil {
 					return err

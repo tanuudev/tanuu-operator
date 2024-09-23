@@ -141,30 +141,34 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			update.ControlPlane = devenv.Status.ControlPlane
 			update.Workers = devenv.Status.Workers
 			update.Gpus = devenv.Status.Gpus
+			nodelist := []string{}
 			for i := len(devenv.Status.ControlPlane); i < devenv.Spec.CtrlReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "control", devenv.Spec.CtrlSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.ControlPlane = append(update.ControlPlane, NodeInfo)
 			}
 			for i := len(devenv.Status.Workers); i < devenv.Spec.WorkerReplicas; i++ {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.Workers = append(update.Workers, NodeInfo)
 			}
 
 			if devenv.Spec.GpuReplicas > 0 {
 				for i := len(devenv.Status.Gpus); i < devenv.Spec.GpuReplicas; i++ {
-					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector)
+					NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.GpuSelector, nodelist, devenv.Spec.StorageSelector)
 					if err != nil {
 						l.Error(err, "Failed to select node")
 						return ctrl.Result{}, err
 					}
+					nodelist = append(nodelist, NodeInfo.UID)
 					update.Gpus = append(update.Gpus, NodeInfo)
 				}
 				for _, node := range devenv.Status.Gpus {
@@ -185,7 +189,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if devenv.Status.Status == "GPUPending" {
 			if devenv.Spec.GpuReplicas > 0 {
 				// TODO create a check for GPU availability
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 			}
 
 			for _, node := range devenv.Status.ControlPlane {
@@ -209,7 +213,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Check if the Devenv is ready to be marked as Ready
 		if devenv.Status.Status == "Scaling" {
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 
 		isReady, err := r.checkDevenvReadiness(ctx, r.Client, l, req, devenv)
@@ -225,13 +229,13 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				l.Error(err, "Failed to update Devenv status to Ready")
 				return ctrl.Result{}, err
 			}
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		} else if devenv.Status.Status == "Pending" {
 			r.fetch_omni_nodes(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		} else if devenv.Status.Status == "Starting" {
 			r.create_omni_cluster(ctx, r.Client, l, req, devenv)
-			return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 	} else {
 		// Devenv is ready, check if it needs to be updated
@@ -244,12 +248,14 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.updateDevenvStatusWithRetry(ctx, devenv, update)
 		if devenv.Spec.WorkerReplicas != update.WorkerReplicas {
 			l.Info("Updating worker replicas")
+			nodelist := []string{}
 			if devenv.Spec.WorkerReplicas > update.WorkerReplicas {
-				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector)
+				NodeInfo, err := r.select_nodes(ctx, l, devenv.Spec.Name, "worker", devenv.Spec.WorkerSelector, nodelist, devenv.Spec.StorageSelector)
 				if err != nil {
 					l.Error(err, "Failed to select node")
 					return ctrl.Result{}, err
 				}
+				nodelist = append(nodelist, NodeInfo.UID)
 				update.Workers = append(update.Workers, NodeInfo)
 				if err := r.updateDevenvStatusWithRetry(ctx, devenv, update); err != nil {
 					l.Error(err, "Failed to update Devenv status")
@@ -262,7 +268,7 @@ func (r *DevenvReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				}
 				update.Status = "Scaling"
 				r.updateDevenvStatusWithRetry(ctx, devenv, update)
-				return ctrl.Result{RequeueAfter: time.Second * 30}, nil
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 			} else {
 				l.Info("Scaling down worker replicas")
 

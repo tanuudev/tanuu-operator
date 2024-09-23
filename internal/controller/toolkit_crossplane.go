@@ -20,16 +20,30 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	tanuudevv1alpha1 "github.com/tanuudev/tanuu-operator/api/v1alpha1"
 )
+
+// stripNonDigits removes all non-digit characters from the input string.
+func stripNonDigits(input string) string {
+	var builder strings.Builder
+	for _, char := range input {
+		if unicode.IsDigit(char) {
+			builder.WriteRune(char)
+		}
+	}
+	return builder.String()
+}
 
 func parseConfigString(config string) map[string]interface{} {
 	lines := strings.Split(config, "\n")
@@ -57,16 +71,77 @@ func parseConfigString(config string) map[string]interface{} {
 
 func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Logger, req ctrl.Request, devenv *tanuudevv1alpha1.Devenv, nodename string, nodetype string) {
 	nodetypeselector := ""
+	machineType := ""
+	// Define the ConfigMap object
+	tanuuConfigMap := &corev1.ConfigMap{}
+	// Define the namespaced name to look up the ConfigMap
+	configmapname := types.NamespacedName{
+		Namespace: "tanuu-system",
+		Name:      "tanuu-operator",
+	}
+	// Get the ConfigMap
+	if err := client.Get(ctx, configmapname, tanuuConfigMap); err != nil {
+		l.Error(err, "Failed to get ConfigMap")
+		return
+	}
+	// Extract the configuration string
+	defalutWorkerSelector, exists := tanuuConfigMap.Data["default.workerSelector"]
+	defaultCtrlSelector, exists := tanuuConfigMap.Data["default.ctrlSelector"]
+	defaultGpuSelector, exists := tanuuConfigMap.Data["default.gpuSelector"]
+	defaultTalosVersion, exists := tanuuConfigMap.Data["default.talosVersion"]
+	defaultCtrlMachineType, exists := tanuuConfigMap.Data["default.ctrlMachineType"]
+	defaultWorkerMachineType, exists := tanuuConfigMap.Data["default.workerMachineType"]
+	defaultGpuMachineType, exists := tanuuConfigMap.Data["default.gpuMachineType"]
+	defaultServiceAccount, exists := tanuuConfigMap.Data["default.serviceAccount"]
+	defaultSubnetwork, exists := tanuuConfigMap.Data["default.subnetwork"]
+
+	if !exists {
+		panic("Specified key does not exist in the ConfigMap")
+	}
+	if devenv.Spec.Subnetwork == "" {
+		devenv.Spec.Subnetwork = defaultSubnetwork
+	}
+	if devenv.Spec.ServiceAccount == "" {
+		devenv.Spec.ServiceAccount = defaultServiceAccount
+	}
+	if devenv.Spec.TalosVersion == "" {
+		devenv.Spec.TalosVersion = defaultTalosVersion
+	}
+	if devenv.Spec.ProviderConfig == "" {
+		devenv.Spec.ProviderConfig = "default"
+	}
+
 	if nodetype == "worker" {
-		nodetypeselector = devenv.Spec.WorkerSelector
+		if devenv.Spec.WorkerMachineType == "" {
+			machineType = defaultWorkerMachineType
+		}
+		if devenv.Spec.WorkerSelector == "" {
+			nodetypeselector = defalutWorkerSelector
+		} else {
+			nodetypeselector = devenv.Spec.WorkerSelector
+		}
 	} else if nodetype == "control" {
-		nodetypeselector = devenv.Spec.CtrlSelector
+		if devenv.Spec.CtrlMachineType == "" {
+			machineType = defaultCtrlMachineType
+		}
+		if devenv.Spec.CtrlSelector == "" {
+			nodetypeselector = defaultCtrlSelector
+		} else {
+			nodetypeselector = devenv.Spec.CtrlSelector
+		}
 	} else if nodetype == "gpu" {
-		nodetypeselector = devenv.Spec.GpuSelector
+		if devenv.Spec.GpuMachineType == "" {
+			machineType = defaultGpuMachineType
+		}
+		if devenv.Spec.GpuSelector == "" {
+			nodetypeselector = defaultGpuSelector
+		} else {
+			nodetypeselector = devenv.Spec.GpuSelector
+		}
 	}
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "tanuu.dev/v1alpha1",
+			"apiVersion": "tanuu.dev/v1beta1",
 			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
 				"name":      nodename,
@@ -79,7 +154,12 @@ func createDevClusterNodes(ctx context.Context, client client.Client, l logr.Log
 						"nodetype": nodetypeselector},
 				},
 				"parameters": map[string]interface{}{
-					"zone": devenv.Spec.Zone},
+					"zone":           devenv.Spec.Zone,
+					"providerConfig": devenv.Spec.ProviderConfig,
+					"talosVersion":   stripNonDigits(devenv.Spec.TalosVersion),
+					"subnetwork":     devenv.Spec.Subnetwork,
+					"serviceAccount": devenv.Spec.ServiceAccount,
+					"machineType":    machineType},
 			},
 		},
 	}
@@ -102,7 +182,7 @@ func (r *DevenvReconciler) deleteDevClusterNodes(ctx context.Context, devenv *ta
 	// Define the custom resource to delete
 	customResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
-			"apiVersion": "tanuu.dev/v1alpha1",
+			"apiVersion": "tanuu.dev/v1beta1",
 			"kind":       "TanuuNode",
 			"metadata": map[string]interface{}{
 				"name":      nodename,

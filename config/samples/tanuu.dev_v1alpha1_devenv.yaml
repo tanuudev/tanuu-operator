@@ -4,18 +4,20 @@ metadata:
   labels:
     app.kubernetes.io/name: tanuu-operator
     app.kubernetes.io/managed-by: kustomize
-  name: demo-platform-workshop
+  name: andy-test
 spec:
-  name: "demo-platform-workshop"
+  name: "andy-test"
   cloudProvider: "google"
-  workerReplicas: 2
+  workerReplicas: 3
   ctrlReplicas: 1
   gpuReplicas: 0
   k8sVersion: "v1.29.4"
   talosVersion: "v1.7.6"
   zone: "europe-north1-c"
   # The following fields are optional
-  workerSelector: "base-176"
-  ctrlSelector: "base-176"
-  gpuSelector: "gpu-176"
-  
+  # workerSelector: "base-176"
+  # ctrlSelector: "base-176"
+  # gpuSelector: "gpu-176"
+  # # This is the name of configmap that contains the talos cluster config template
+  # # generally, don't touch this field, or leave it out completely.
+  templateCM: "test-cluster"  
