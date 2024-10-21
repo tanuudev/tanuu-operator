@@ -1,0 +1,34 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: quick-start
+spec:
+  steps:
+  - name: monitoring-ns/external_names
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-svc-monitoring.yaml
+  - name: external-secret-ns/cluster_secret_store 
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-cluster_secret_store.yaml
+  - name: external-secret-ns/external_names
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-svc-external-secrets.yaml
+  - name: monitoring-ns/daemonset
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-daemonset-monitoring.yaml
+  - name: longhorn-ns/storage_classes
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-storageclasses.yaml
+  - name: tailscale-ns/deployment
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-deployment-tailscale.yaml
+  - name: crossplane-ns/deployment
+    try:
+    - assert:
+        file: assertion-folder/ephemeral-cluster/expected-deployment-crossplane.yaml

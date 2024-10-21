@@ -1,0 +1,29 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: operator
+  namespace: tailscale 
+status:
+  availableReplicas: 1
+  readyReplicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: crossplane-system
+  name:
+    (contains(@, 'function-go-templating')): true
+status:
+  availableReplicas: 1
+  readyReplicas: 1  
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: crossplane-system
+  name:
+    (contains(@, 'provider-kubernetes')): true
+status:
+  availableReplicas: 1
+  readyReplicas: 1  
