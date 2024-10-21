@@ -1,0 +1,22 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prometheus-prometheus-node-exporter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/instance: prometheus
+    app.kubernetes.io/name: prometheus-node-exporter
+status:
+  numberMisscheduled: 0
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail 
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/instance: promtail
+    app.kubernetes.io/name: promtail
+status:
+  numberMisscheduled: 0
